@@ -1,4 +1,7 @@
-use std::{io::{self, BufRead, ErrorKind, Cursor, BufReader}, ops::Index, slice::SliceIndex};
+use std::{
+    io::{self, BufRead, BufReader, Cursor, ErrorKind},
+    ops::Index,
+};
 
 pub struct Parser {
     pub stream: Box<dyn BufRead>,
@@ -30,14 +33,14 @@ impl TryFrom<u8> for ValType {
             0x7B => ValType::V128,
             0x70 => ValType::FuncRef,
             0x6F => ValType::ExternRef,
-            x => return Err(UnkownValType(x))
+            x => return Err(UnkownValType(x)),
         };
         Ok(typ)
     }
 }
 
 pub struct ResultType {
-    pub types: Vec<ValType>
+    pub types: Vec<ValType>,
 }
 
 pub struct FuncType {
@@ -59,10 +62,32 @@ pub struct Locals {
     pub t: ValType,
 }
 
-pub struct Func {
-    pub typ: TypeIdx,
-    pub locals: Vec<Locals>,
-    pub body: Vec<u8>,
+pub enum Func {
+    Local {
+        typ: TypeIdx,
+        locals: Vec<Locals>,
+        body: Vec<u8>,
+    },
+    External {
+        typ: TypeIdx,
+        import: usize,
+    },
+}
+
+impl Func {
+    pub fn body(&self) -> Option<&[u8]> {
+        match self {
+            Func::Local { body, .. } => Some(&body),
+            Func::External { .. } => None,
+        }
+    }
+
+    pub fn typ(&self) -> TypeIdx {
+        match self {
+            Func::Local { typ, .. } => *typ,
+            Func::External { typ, .. } => *typ,
+        }
+    }
 }
 
 pub struct Table {}
@@ -75,8 +100,20 @@ pub struct Elem {}
 
 pub struct Data {}
 
+#[derive(Clone)]
+pub enum ImportDesc {
+    Func(TypeIdx),
+    Table {},
+    Mem {},
+    Global {},
+}
 
-pub struct Import {}
+#[derive(Clone)]
+pub struct Import {
+    pub module: String,
+    pub nm: String,
+    desc: ImportDesc,
+}
 
 pub enum ExportDesc {
     Func(FuncIdx),
@@ -89,7 +126,6 @@ pub struct Export {
     pub name: String,
     pub desc: ExportDesc,
 }
-
 
 #[derive(Default)]
 pub struct Module {
@@ -135,7 +171,7 @@ pub enum SectionId {
     Element = 9,
     Code = 10,
     Data = 11,
-    DataCount = 12 
+    DataCount = 12,
 }
 
 pub struct UnkownSection(u8);
@@ -159,7 +195,7 @@ impl TryFrom<u8> for SectionId {
             10 => Code,
             11 => Data,
             12 => DataCount,
-            x => return Err(UnkownSection(x))
+            x => return Err(UnkownSection(x)),
         };
         Ok(id)
     }
@@ -208,14 +244,16 @@ impl Parser {
 
     fn parse_section_header(&mut self) -> Result<(SectionId, u32), io::Error> {
         let typ = self.parse_byte()?;
-        let id = SectionId::try_from(typ).map_err(|_e| io::Error::new(ErrorKind::InvalidInput, "unknown section id"))?;
+        let id = SectionId::try_from(typ)
+            .map_err(|_e| io::Error::new(ErrorKind::InvalidInput, "unknown section id"))?;
         let size = self.parse_u32()?;
         Ok((id, size))
     }
 
     fn parse_valtype(&mut self) -> Result<ValType, io::Error> {
         let typ = self.parse_byte()?;
-        let typ = ValType::try_from(typ).map_err(|_e| io::Error::new(ErrorKind::InvalidInput, "unknown value type"))?;
+        let typ = ValType::try_from(typ)
+            .map_err(|_e| io::Error::new(ErrorKind::InvalidInput, "unknown value type"))?;
         Ok(typ)
     }
 
@@ -233,9 +271,9 @@ impl Parser {
         let header = self.parse_byte()?;
         assert_eq!(header, 0x60);
         let from = self.parse_resulttype()?;
-        let to  = self.parse_resulttype()?;
+        let to = self.parse_resulttype()?;
         Ok(FuncType { from, to })
-    } 
+    }
 
     fn parse_typeidx(&mut self) -> Result<TypeIdx, io::Error> {
         let idx = self.parse_u32()?;
@@ -246,7 +284,7 @@ impl Parser {
         let idx = self.parse_u32()?;
         Ok(FuncIdx(idx))
     }
-    
+
     fn parse_name(&mut self) -> Result<String, io::Error> {
         let size = self.parse_u32()?;
         let mut bytes = vec![0; size as usize];
@@ -263,7 +301,7 @@ impl Parser {
             1 => ExportDesc::Table(TableIdx(idx)),
             2 => ExportDesc::Mem(MemIdx(idx)),
             3 => ExportDesc::Global(GlobalIdx(idx)),
-            _ => panic!("invalid export desc")
+            _ => panic!("invalid export desc"),
         };
         Ok(desc)
     }
@@ -288,7 +326,9 @@ impl Parser {
             let size = self.parse_u32()?;
             let mut func_bytes = vec![0; size as usize];
             self.stream.read_exact(&mut func_bytes)?;
-            let mut inner_parser = Parser { stream: Box::new(Cursor::new(func_bytes))};
+            let mut inner_parser = Parser {
+                stream: Box::new(Cursor::new(func_bytes)),
+            };
             let mut locals = vec![];
             let local_count = inner_parser.parse_u32()?;
             for _ in 0..local_count {
@@ -297,9 +337,27 @@ impl Parser {
             let mut expr = vec![];
             inner_parser.stream.read_to_end(&mut expr)?;
 
-            funcs.push(Func { typ: typidx, locals, body: expr });
+            funcs.push(Func::Local {
+                typ: typidx,
+                locals,
+                body: expr,
+            });
         }
         Ok(funcs)
+    }
+
+    fn parse_import_desc(&mut self) -> Result<ImportDesc, io::Error> {
+        let typ = self.parse_byte()?;
+        match typ {
+            0x00 => {
+                let idx = self.parse_typeidx()?;
+                Ok(ImportDesc::Func(idx))
+            }
+            0x01 => todo!(),
+            0x02 => todo!(),
+            0x03 => todo!(),
+            _ => panic!("invalid import desc"),
+        }
     }
 
     pub fn parse_module(&mut self) -> Result<Module, io::Error> {
@@ -314,23 +372,47 @@ impl Parser {
             match typ {
                 SectionId::Custom => {
                     let mut content = vec![0u8; size as usize];
-                    self.stream.read_exact(&mut content).expect("failed to read section content");
-                },
+                    self.stream
+                        .read_exact(&mut content)
+                        .expect("failed to read section content");
+                }
                 SectionId::Type => {
                     let elems = self.parse_u32()?;
                     for _ in 0..elems {
                         let functype = self.parse_functype()?;
                         module.types.push(functype);
                     }
-                },
-                SectionId::Import => todo!(),
+                }
+                SectionId::Import => {
+                    let elems = self.parse_u32()?;
+                    for _ in 0..elems {
+                        let nm_1 = self.parse_name()?;
+                        let nm_2 = self.parse_name()?;
+                        let desc = self.parse_import_desc()?;
+                        let import = Import {
+                            module: nm_1,
+                            nm: nm_2,
+                            desc,
+                        };
+                        module.imports.push(import.clone());
+                        let idx = module.imports.len() - 1;
+                        match import.desc {
+                            ImportDesc::Func(typ) => {
+                                module.funcs.push(Func::External { typ, import: idx })
+                            }
+                            ImportDesc::Table {} => todo!(),
+                            ImportDesc::Mem {} => todo!(),
+                            ImportDesc::Global {} => todo!(),
+                        }
+                    }
+                }
                 SectionId::Function => {
                     let elems = self.parse_u32()?;
                     for _ in 0..elems {
                         let typidx = self.parse_typeidx()?;
                         func_types.push(typidx);
                     }
-                },
+                }
                 SectionId::Table => todo!(),
                 SectionId::Memory => todo!(),
                 SectionId::Global => todo!(),
@@ -340,16 +422,15 @@ impl Parser {
                         let export = self.parse_export()?;
                         module.exports.push(export);
                     }
-                },
+                }
                 SectionId::Start => {
                     let idx = self.parse_funcidx()?;
                     module.start = Some(idx)
-
-                },
+                }
                 SectionId::Element => todo!(),
                 SectionId::Code => {
-                    module.funcs = self.parse_code(&func_types)?;
-                },
+                    module.funcs.extend(self.parse_code(&func_types)?);
+                }
                 SectionId::Data => todo!(),
                 SectionId::DataCount => todo!(),
             }

@@ -75,15 +75,15 @@ impl<'a> InstructionParser<'a> {
         let mut result: i32 = 0;
         let mut shift = 0;
         loop {
-          let byte = self.parse_byte()?;
-          result |= ((byte & 0x7f) as i32) << shift;
-          shift += 7;
-          if (0x80 & byte) == 0 {
-            if shift < 32 && (byte & 0x40) != 0 {
-              return Ok(result | (!0 << shift));
+            let byte = self.parse_byte()?;
+            result |= ((byte & 0x7f) as i32) << shift;
+            shift += 7;
+            if (0x80 & byte) == 0 {
+                if shift < 32 && (byte & 0x40) != 0 {
+                    return Ok(result | (!0 << shift));
+                }
+                return Ok(result);
             }
-            return Ok(result);
-          }
         }
     }
 
@@ -97,7 +97,6 @@ impl<'a> InstructionParser<'a> {
         Ok(LocalIdx(idx))
     }
 }
-
 
 pub fn parse_instructions(bytes: &[u8]) -> Result<Vec<Inst>, io::Error> {
     let mut parser = InstructionParser::new(bytes);

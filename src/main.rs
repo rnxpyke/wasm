@@ -1,8 +1,11 @@
-use std::ops::{self, Index};
+use std::{
+    ops::{self, Index},
+    rc::Rc,
+};
 
 use wasm::{
     bytecode::{parse_instructions, Inst, LocalIdx},
-    parser::{Func, Module, ResultType},
+    parser::{Func, Import, Module, ResultType},
 };
 
 #[derive(Copy, Clone, Debug)]
@@ -71,10 +74,15 @@ impl Storage {
     }
 }
 
+pub trait ExternalFunc {
+    fn call(&self, stack: &mut Stack, storage: &mut Storage) -> Result<(), Exception>;
+}
+
 #[derive(Default)]
 pub struct Machine {
     pub stack: Stack,
     pub memory: Storage,
+    pub external_funcs: Vec<(String, String, Rc<dyn ExternalFunc>)>,
 }
 
 pub struct Locals {
@@ -118,16 +126,26 @@ impl Machine {
                 Inst::Return => todo!(),
                 Inst::Call(func) => {
                     let func = &module[*func];
-                    let code = parse_instructions(&func.body).unwrap();
-                    let typ = &module[func.typ];
-                    let mut locals = get_locals(&mut self.stack, &typ.from)?;
-                    match self.execute(module, &code, &mut locals) {
-                        Ok(()) => {},
-                        Err(Exception::Return) => {},
-                        Err(e) => return Err(e)
+                    match func {
+                        Func::Local { typ, locals, body } => {
+                            let code = parse_instructions(body).unwrap();
+                            let typ = &module[*typ];
+                            let mut locals = get_locals(&mut self.stack, &typ.from)?;
+                            match self.execute(module, &code, &mut locals) {
+                                Ok(()) => {}
+                                Err(Exception::Return) => {}
+                                Err(e) => return Err(e),
+                            }
+                            // TODO: check stack return effect
+                        }
+                        Func::External { typ, import } => {
+                            let import = &module.imports[*import];
+                            let func = self.find_import_func(&import)?;
+                            let Machine { stack, memory, .. } = self;
+                            func.call(stack, memory)?;
+                        }
                     }
-                    // TODO: check stack return effect
-                },
+                }
                 Inst::LocalGet(idx) => {
                     let local = locals[*idx];
                     self.stack.push(local);
@@ -141,6 +159,15 @@ impl Machine {
             }
         }
         Ok(())
+    }
+
+    fn find_import_func(&self, import: &Import) -> Result<Rc<dyn ExternalFunc>, Error> {
+        for (module, name, func) in self.external_funcs.iter() {
+            if module == &import.module && name == &import.nm {
+                return Ok(func.clone());
+            }
+        }
+        Err(Error::FunctionNotFound)
     }
 }
 
@@ -156,18 +183,27 @@ fn get_locals(stack: &mut Stack, from: &ResultType) -> Result<Locals, Exception>
     Ok(Locals { locals: vars })
 }
 
+struct Greet;
+impl ExternalFunc for Greet {
+    fn call(&self, stack: &mut Stack, storage: &mut Storage) -> Result<(), Exception> {
+        println!("greet");
+        Ok(())
+    }
+}
+
 fn main() {
     println!("Hello, world!");
-    let add_mod = wasm::parser::parse_file("examples/add.wasm").unwrap();
+    let add_mod = wasm::parser::parse_file("examples/greet.wasm").unwrap();
 
     let mut m = Machine {
         stack: Stack::default(),
         memory: Storage::new(65536),
+        external_funcs: vec![("env".into(), "greet".into(), Rc::new(Greet))],
     };
 
     if let Some(start) = add_mod.start {
         let func = &add_mod[start];
-        let code = parse_instructions(&func.body).unwrap();
+        let code = parse_instructions(func.body().unwrap()).unwrap();
         let mut locals = Locals { locals: vec![] };
         m.execute(&add_mod, &code, &mut locals).unwrap();
     }
