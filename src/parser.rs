@@ -3,6 +3,8 @@ use std::{
     ops::Index,
 };
 
+use crate::bytecode::{BlockType, Inst, LocalIdx, LabelIdx};
+
 pub struct Parser {
     pub stream: Box<dyn BufRead>,
 }
@@ -62,11 +64,13 @@ pub struct Locals {
     pub t: ValType,
 }
 
+pub struct ExprBytes(pub Vec<u8>);
+
 pub enum Func {
     Local {
         typ: TypeIdx,
         locals: Vec<Locals>,
-        body: Vec<u8>,
+        body: Vec<Inst>,
     },
     External {
         typ: TypeIdx,
@@ -75,7 +79,7 @@ pub enum Func {
 }
 
 impl Func {
-    pub fn body(&self) -> Option<&[u8]> {
+    pub fn body(&self) -> Option<&Vec<Inst>> {
         match self {
             Func::Local { body, .. } => Some(&body),
             Func::External { .. } => None,
@@ -90,15 +94,38 @@ impl Func {
     }
 }
 
-pub struct Table {}
+pub struct Table {
+    reftype: Reftype,
+    limits: Limits,
+}
 
-pub struct Mem {}
+pub struct Mem {
+    limits: Limits,
+}
 
 pub struct Global {}
 
-pub struct Elem {}
+pub enum ElemMode {
+    Passive,
+    Active { table: TableIdx, offset: ExprBytes },
+    Declarative,
+}
 
-pub struct Data {}
+pub struct Elem {
+    typ: Reftype,
+    init: Vec<ExprBytes>,
+    mode: ElemMode,
+}
+
+pub enum Datamode {
+    Passive,
+    Active { memory: MemIdx, offset: Vec<Inst> },
+}
+
+pub struct Data {
+    init: Vec<u8>,
+    mode: Datamode,
+}
 
 #[derive(Clone)]
 pub enum ImportDesc {
@@ -125,6 +152,16 @@ pub enum ExportDesc {
 pub struct Export {
     pub name: String,
     pub desc: ExportDesc,
+}
+
+pub enum Reftype {
+    Funcref,
+    Externref,
+}
+
+pub struct Limits {
+    min: u32,
+    max: Option<u32>,
 }
 
 #[derive(Default)]
@@ -201,6 +238,12 @@ impl TryFrom<u8> for SectionId {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct MemArg {
+    align: u32,
+    offset: u32,
+}
+
 impl Parser {
     fn parse_magic(&mut self) -> Result<(), io::Error> {
         let mut magic = [0u8; 4];
@@ -224,6 +267,12 @@ impl Parser {
         let mut byte = [0];
         self.stream.read_exact(&mut byte)?;
         Ok(byte[0])
+    }
+
+    fn read_bytes(&mut self, bytes: usize) -> Result<Vec<u8>, io::Error> {
+        let mut buf = vec![0; bytes];
+        self.stream.read_exact(&mut buf)?;
+        Ok(buf)
     }
 
     fn parse_u32(&mut self) -> Result<u32, io::Error> {
@@ -287,8 +336,7 @@ impl Parser {
 
     fn parse_name(&mut self) -> Result<String, io::Error> {
         let size = self.parse_u32()?;
-        let mut bytes = vec![0; size as usize];
-        self.stream.read_exact(&mut bytes)?;
+        let bytes = self.read_bytes(size as usize)?;
         let name = String::from_utf8(bytes).expect("invalid utf8");
         Ok(name)
     }
@@ -324,18 +372,12 @@ impl Parser {
         for func in 0..elems {
             let typidx = func_types[func as usize];
             let size = self.parse_u32()?;
-            let mut func_bytes = vec![0; size as usize];
-            self.stream.read_exact(&mut func_bytes)?;
-            let mut inner_parser = Parser {
-                stream: Box::new(Cursor::new(func_bytes)),
-            };
             let mut locals = vec![];
-            let local_count = inner_parser.parse_u32()?;
+            let local_count = self.parse_u32()?;
             for _ in 0..local_count {
-                locals.push(inner_parser.parse_local()?);
+                locals.push(self.parse_local()?);
             }
-            let mut expr = vec![];
-            inner_parser.stream.read_to_end(&mut expr)?;
+            let expr = self.parse_expr()?;
 
             funcs.push(Func::Local {
                 typ: typidx,
@@ -358,6 +400,251 @@ impl Parser {
             0x03 => todo!(),
             _ => panic!("invalid import desc"),
         }
+    }
+
+    fn parse_reftype(&mut self) -> Result<Reftype, io::Error> {
+        let byte = self.parse_byte()?;
+        let typ = match byte {
+            0x70 => Reftype::Funcref,
+            0x6F => Reftype::Externref,
+            _ => panic!("invalid reftype"),
+        };
+        Ok(typ)
+    }
+
+    fn parse_limits(&mut self) -> Result<Limits, io::Error> {
+        let byte = self.parse_byte()?;
+        let limits = match byte {
+            0x00 => {
+                let min = self.parse_u32()?;
+                Limits { min, max: None }
+            }
+            0x01 => {
+                let min = self.parse_u32()?;
+                let max = self.parse_u32()?;
+                Limits {
+                    min,
+                    max: Some(max),
+                }
+            }
+            _ => panic!("invalid limits"),
+        };
+        Ok(limits)
+    }
+
+    fn parse_tabletype(&mut self) -> Result<Table, io::Error> {
+        let reftype = self.parse_reftype()?;
+        let limits = self.parse_limits()?;
+        Ok(Table { reftype, limits })
+    }
+
+    fn parse_memtype(&mut self) -> Result<Mem, io::Error> {
+        let limits = self.parse_limits()?;
+        Ok(Mem { limits })
+    }
+
+    fn parse_elem(&mut self) -> Result<Elem, io::Error> {
+        todo!()
+    }
+
+    fn parse_blocktype(&mut self) -> Result<BlockType, io::Error> {
+        let typ = match self.peek_byte()? {
+            0x40 => {
+                self.stream.consume(1);
+                BlockType::Empty
+            }
+            0x7F | 0x7E | 0x7D | 0x7C | 0x7B | 0x70 | 0x67 => {
+                BlockType::Inline(self.parse_valtype()?)
+            }
+            _ => todo!(),
+        };
+        Ok(typ)
+    }
+
+    fn peek_byte(&mut self) -> Result<u8, io::Error> {
+        Ok(self.stream.fill_buf()?[0])
+    }
+
+    fn parse_block(&mut self) -> Result<(BlockType, Vec<Inst>), io::Error> {
+        let bt = self.parse_blocktype()?;
+        let insts = self.parse_expr()?;
+        Ok((bt, insts))
+    }
+
+    fn parse_if(&mut self) -> Result<(BlockType, Vec<Inst>, Vec<Inst>), io::Error> {
+        let bt = self.parse_blocktype()?;
+        let mut ifis = vec![];
+        loop {
+            match self.peek_byte()? {
+                0x05 => {
+                    break;
+                }
+                0x0b => todo!(),
+                _ => panic!(),
+            }
+            ifis.push(self.parse_instr()?);
+        }
+        let mut elseis = self.parse_block()?;
+        todo!()
+    }
+
+    // TODO: check if correct
+    fn parse_i32(&mut self) -> Result<i32, io::Error> {
+        let mut result: i32 = 0;
+        let mut shift = 0;
+        loop {
+            let byte = self.parse_byte()?;
+            result |= ((byte & 0x7f) as i32) << shift;
+            shift += 7;
+            if (0x80 & byte) == 0 {
+                if shift < 32 && (byte & 0x40) != 0 {
+                    return Ok(result | (!0 << shift));
+                }
+                return Ok(result);
+            }
+        }
+    }
+
+    fn parse_i64(&mut self) -> Result<i64, io::Error> {
+        let mut result: i64 = 0;
+        let mut shift = 0;
+        loop {
+            let byte = self.parse_byte()?;
+            result |= ((byte & 0x7f) as i64) << shift;
+            shift += 7;
+            if (0x80 & byte) == 0 {
+                if shift < 32 && (byte & 0x40) != 0 {
+                    return Ok(result | (!0 << shift));
+                }
+                return Ok(result);
+            }
+        }
+    }
+
+    fn parse_memarg(&mut self) -> Result<MemArg, io::Error> {
+        let align = self.parse_u32()?;
+        let offset = self.parse_u32()?;
+        Ok(MemArg { align, offset })
+    }
+
+    fn parse_labelidx(&mut self) -> Result<LabelIdx, io::Error> {
+        Ok(LabelIdx(self.parse_u32()?))
+    }
+
+    fn parse_f64(&mut self) -> Result<f64, io::Error> {
+        let mut bytes = [0u8; 8];
+        self.stream.read_exact(&mut bytes)?;
+        Ok(f64::from_le_bytes(bytes))
+    }
+
+    fn parse_instr(&mut self) -> Result<Inst, io::Error> {
+        let byte = self.parse_byte()?;
+        println!("0x{byte:x}");
+        let inst = match byte {
+            0x00 => Inst::Unreachable,
+            0x01 => Inst::Nop,
+            0x02 => {
+                let (bt, i) = self.parse_block()?;
+                Inst::Block(i)
+            }
+            0x03 => {
+                let (bt, i) = self.parse_block()?;
+                Inst::Loop(i)
+            }
+            0x04 => {
+                let (bt, then, els) = self.parse_if()?;
+                todo!()
+            }
+            0x0C => Inst::Break(self.parse_labelidx()?),
+            0x0F => Inst::Return,
+            0x10 => Inst::Call(self.parse_funcidx()?),
+            0x0d => Inst::BreakIf(self.parse_labelidx()?),
+            0x20 => Inst::LocalGet(self.parse_localidx()?),
+            0x21 => Inst::LocalSet(self.parse_localidx()?),
+            0x22 => Inst::LocalTee(self.parse_localidx()?),
+            0x28 => Inst::I32Load(self.parse_memarg()?),
+            0x29 => Inst::I64Load(self.parse_memarg()?),
+            0x2d => Inst::I32Load8U(self.parse_memarg()?),
+            0x2f => Inst::I32Load16U(self.parse_memarg()?),
+            0x36 => Inst::I32Store(self.parse_memarg()?),
+            0x37 => Inst::I64Store(self.parse_memarg()?),
+            0x3a => Inst::I32Store8(self.parse_memarg()?),
+            0x3b => Inst::I32Store16(self.parse_memarg()?),
+            0x41 => Inst::I32Const(self.parse_i32()?),
+            0x42 => Inst::I64Const(self.parse_i64()?),
+            0x44 => Inst::F64Const(self.parse_f64()?),
+
+            0x45 => Inst::I32Eqz,
+            0x46 => Inst::I32Eq,
+            0x47 => Inst::I32Ne,
+            0x48 => Inst::I32LT_S,
+            0x49 => Inst::I32LT_U,
+            0x4c => Inst::I32GE_S,
+
+            0x64 => Inst::F64Gt,
+            0x6a => Inst::I32Add,
+            0x6b => Inst::I32Sub,
+            0x6c => Inst::I32Mul,
+            0x78 => Inst::I32Rotr,
+            0x74 => Inst::I32Shl,
+            0x7c => Inst::I64Add,
+            0x7e => Inst::I64Mul,
+            0x84 => Inst::I64Or,
+            0x85 => Inst::I64Xor,
+            0x86 => Inst::I64Shl,
+            0x88 => Inst::I64ShrU,
+
+            0xa7 => Inst::I32WrapI64,
+            0xad => Inst::I64ExtendI32U,
+            x => panic!("unknown op: 0x{x:x?}"),
+        };
+        Ok(inst)
+    }
+
+    fn parse_expr(&mut self) -> Result<Vec<Inst>, io::Error> {
+        let mut is = vec![];
+        loop {
+            match self.peek_byte()? {
+                0x0B => {
+                    self.stream.consume(1);
+                    break;
+                }
+                _ => {}
+            };
+            is.push(self.parse_instr()?);
+        }
+        Ok(is)
+    }
+
+    fn parse_data(&mut self) -> Result<Data, io::Error> {
+        let kind = self.parse_u32()?;
+        let data = match kind {
+            0 => {
+                let expr = self.parse_expr()?;
+                let byte_size = self.parse_u32()?;
+                let bytes = self.read_bytes(byte_size as usize)?;
+                Data {
+                    init: bytes,
+                    mode: Datamode::Active {
+                        memory: MemIdx(0),
+                        offset: expr,
+                    },
+                }
+            }
+            1 => {
+                let count = self.parse_u32()?;
+                let buf = self.read_bytes(count as usize)?;
+                Data {
+                    init: buf,
+                    mode: Datamode::Passive,
+                }
+            }
+            2 => {
+                todo!("active data")
+            }
+            _ => panic!("invalid data kind"),
+        };
+        Ok(data)
     }
 
     pub fn parse_module(&mut self) -> Result<Module, io::Error> {
@@ -413,8 +700,20 @@ impl Parser {
                         func_types.push(typidx);
                     }
                 }
-                SectionId::Table => todo!(),
-                SectionId::Memory => todo!(),
+                SectionId::Table => {
+                    let elems = self.parse_u32()?;
+                    for _ in 0..elems {
+                        let tabletyp = self.parse_tabletype()?;
+                        module.tables.push(tabletyp)
+                    }
+                }
+                SectionId::Memory => {
+                    let elems = self.parse_u32()?;
+                    for _ in 0..elems {
+                        let memtype = self.parse_memtype()?;
+                        module.mems.push(memtype);
+                    }
+                }
                 SectionId::Global => todo!(),
                 SectionId::Export => {
                     let elems = self.parse_u32()?;
@@ -427,16 +726,32 @@ impl Parser {
                     let idx = self.parse_funcidx()?;
                     module.start = Some(idx)
                 }
-                SectionId::Element => todo!(),
+                SectionId::Element => {
+                    let mut content = vec![0u8; size as usize];
+                    self.stream
+                        .read_exact(&mut content)
+                        .expect("failed to read section content");
+                    // TODO
+                }
                 SectionId::Code => {
                     module.funcs.extend(self.parse_code(&func_types)?);
                 }
-                SectionId::Data => todo!(),
+                SectionId::Data => {
+                    let elems = self.parse_u32()?;
+                    for _ in 0..elems {
+                        let data = self.parse_data()?;
+                        module.datas.push(data)
+                    }
+                }
                 SectionId::DataCount => todo!(),
             }
         }
 
         Ok(module)
+    }
+
+    fn parse_localidx(&mut self) -> Result<LocalIdx, io::Error> {
+        Ok(LocalIdx(self.parse_u32()?))
     }
 }
 

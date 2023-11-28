@@ -1,4 +1,4 @@
-all: add.wasm nothing.wasm greet.wasm
+all: add.wasm nothing.wasm greet.wasm rocket.wasm
 
 %.wasm: %.wat
 	wat2wasm $< -o $@

@@ -1,10 +1,10 @@
 use std::{
     ops::{self, Index},
-    rc::Rc,
+    rc::Rc, path::PathBuf,
 };
 
 use wasm::{
-    bytecode::{parse_instructions, Inst, LocalIdx},
+    bytecode::{Inst, LocalIdx},
     parser::{Func, Import, Module, ResultType},
 };
 
@@ -119,7 +119,6 @@ impl Machine {
                 Inst::Nop => todo!(),
                 Inst::Block(_) => todo!(),
                 Inst::Loop(_) => todo!(),
-                Inst::If(_) => todo!(),
                 Inst::IfElse(_, _) => todo!(),
                 Inst::Break(_) => todo!(),
                 Inst::BreakIf(_) => todo!(),
@@ -128,10 +127,9 @@ impl Machine {
                     let func = &module[*func];
                     match func {
                         Func::Local { typ, locals, body } => {
-                            let code = parse_instructions(body).unwrap();
                             let typ = &module[*typ];
                             let mut locals = get_locals(&mut self.stack, &typ.from)?;
-                            match self.execute(module, &code, &mut locals) {
+                            match self.execute(module, &body, &mut locals) {
                                 Ok(()) => {}
                                 Err(Exception::Return) => {}
                                 Err(e) => return Err(e),
@@ -156,6 +154,7 @@ impl Machine {
                 Inst::Drop => {
                     self.stack.pop()?;
                 }
+                _=> todo!(),
             }
         }
         Ok(())
@@ -191,9 +190,31 @@ impl ExternalFunc for Greet {
     }
 }
 
+
+pub struct Args {
+    wasm: PathBuf,
+}
+
+impl Args {
+    fn from_env() -> Self {
+        let env = std::env::args();
+        let mut wasm = None;
+        let mut count = 0;
+        for arg in env.skip(1) {
+            if count == 0 {
+                wasm = Some(PathBuf::from(arg));
+            }
+            count += 1;
+        }
+        let Some(wasm) = wasm else { panic!("no file") };
+        Self { wasm }
+    }
+}
+
 fn main() {
     println!("Hello, world!");
-    let add_mod = wasm::parser::parse_file("examples/greet.wasm").unwrap();
+    let args = Args::from_env();
+    let add_mod = wasm::parser::parse_file(&args.wasm).unwrap();
 
     let mut m = Machine {
         stack: Stack::default(),
@@ -203,8 +224,7 @@ fn main() {
 
     if let Some(start) = add_mod.start {
         let func = &add_mod[start];
-        let code = parse_instructions(func.body().unwrap()).unwrap();
         let mut locals = Locals { locals: vec![] };
-        m.execute(&add_mod, &code, &mut locals).unwrap();
+        m.execute(&add_mod, &func.body().unwrap(), &mut locals).unwrap();
     }
 }

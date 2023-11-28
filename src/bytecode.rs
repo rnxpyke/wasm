@@ -1,9 +1,9 @@
 use std::io::{self, Cursor, Read};
 
-use crate::parser::{FuncIdx, TypeIdx, ValType};
+use crate::parser::{FuncIdx, TypeIdx, ValType, ExprBytes, MemArg};
 
 #[derive(Debug)]
-pub struct LabelIdx(u32);
+pub struct LabelIdx(pub u32);
 
 #[derive(Debug, Copy, Clone)]
 pub struct LocalIdx(pub u32);
@@ -15,22 +15,53 @@ pub enum BlockType {
 }
 
 #[derive(Debug)]
+#[repr(u8)]
 pub enum Inst {
-    Unreachable,
-    Nop,
-    Block(Vec<Inst>),
-    Loop(Vec<Inst>),
-    If(Vec<Inst>),
-    IfElse(Vec<Inst>, Vec<Inst>),
-    Break(LabelIdx),
-    BreakIf(LabelIdx),
-    Return,
-    Call(FuncIdx),
-    LocalGet(LocalIdx),
+    Unreachable = 0x00,
+    Nop = 0x01,
+    Block(Vec<Inst>) = 0x02,
+    Loop(Vec<Inst>) = 0x03,
+    IfElse(Vec<Inst>, Vec<Inst>) = 0x04,
+    Break(LabelIdx) = 0x0C,
+    BreakIf(LabelIdx) = 0x0E,
+    Return = 0x0F,
+    Call(FuncIdx) = 0x10,
+    LocalGet(LocalIdx) = 0x11,
     I32Add,
     F32Add,
     I32Const(i32),
+    I64Const(i64),
     Drop,
+    I32Load(MemArg),
+    I32Sub,
+    LocalTee(LocalIdx),
+    I32Store(MemArg),
+    LocalSet(LocalIdx),
+    I32Eqz,
+    I64Store(MemArg),
+    F64Const(f64),
+    I64Load(MemArg),
+    I32Store8(MemArg),
+    I32Load8U(MemArg),
+    I32Load16U(MemArg),
+    I32Store16(MemArg),
+    I32Mul,
+    I32GE_S,
+    I32Shl,
+    F64Gt,
+    I64Or,
+    I64Mul,
+    I64Add,
+    I64ShrU,
+    I64Xor,
+    I32WrapI64,
+    I32Rotr,
+    I32Eq,
+    I32Ne,
+    I32LT_S,
+    I32LT_U,
+    I64ExtendI32U,
+    I64Shl,
 }
 
 pub struct InstructionParser<'a> {
@@ -98,8 +129,8 @@ impl<'a> InstructionParser<'a> {
     }
 }
 
-pub fn parse_instructions(bytes: &[u8]) -> Result<Vec<Inst>, io::Error> {
-    let mut parser = InstructionParser::new(bytes);
+pub fn parse_instructions(bytes: &ExprBytes) -> Result<Vec<Inst>, io::Error> {
+    let mut parser = InstructionParser::new(&bytes.0);
     let mut is = vec![];
     while let Some(op) = parser.parse_opcode() {
         let inst = match op {
