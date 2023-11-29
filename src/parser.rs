@@ -1,6 +1,6 @@
 use std::{
     io::{self, BufRead, BufReader, Cursor, ErrorKind},
-    ops::Index,
+    ops::Index, sync::atomic::AtomicU32,
 };
 
 use crate::bytecode::{BlockType, Inst, LocalIdx, LabelIdx};
@@ -50,11 +50,13 @@ pub struct FuncType {
     pub to: ResultType,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct TypeIdx(u32);
 
 #[derive(Debug, Copy, Clone)]
 pub struct FuncIdx(pub u32);
+
+#[derive(Debug, Copy, Clone)]
 pub struct TableIdx(u32);
 pub struct MemIdx(u32);
 pub struct GlobalIdx(u32);
@@ -537,9 +539,16 @@ impl Parser {
         Ok(f64::from_le_bytes(bytes))
     }
 
+    fn parse_tableidx(&mut self) -> Result<TableIdx, io::Error> {
+        let idx = self.parse_u32()?;
+        Ok(TableIdx(idx))
+    }
+
     fn parse_instr(&mut self) -> Result<Inst, io::Error> {
+        static COUNT: AtomicU32 = AtomicU32::new(0); 
         let byte = self.parse_byte()?;
-        println!("0x{byte:x}");
+        let i = COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        println!("{i}: 0x{byte:x}");
         let inst = match byte {
             0x00 => Inst::Unreachable,
             0x01 => Inst::Nop,
@@ -556,20 +565,53 @@ impl Parser {
                 todo!()
             }
             0x0C => Inst::Break(self.parse_labelidx()?),
+            0x0e => {
+                let mut labels = vec![];
+                let count = self.parse_u32()?;
+                for _ in 0..count {
+                    labels.push(self.parse_labelidx()?);
+                }
+                let ln = self.parse_labelidx()?;
+                Inst::BreakTable(labels, ln)
+            }
+            0x0d => Inst::BreakIf(self.parse_labelidx()?),
             0x0F => Inst::Return,
             0x10 => Inst::Call(self.parse_funcidx()?),
-            0x0d => Inst::BreakIf(self.parse_labelidx()?),
+            0x11 => Inst::CallIndirect(self.parse_typeidx()?, self.parse_tableidx()?),
+
+            0x1a => Inst::Drop,
+            0x1b => Inst::Select,
+
             0x20 => Inst::LocalGet(self.parse_localidx()?),
             0x21 => Inst::LocalSet(self.parse_localidx()?),
             0x22 => Inst::LocalTee(self.parse_localidx()?),
+
             0x28 => Inst::I32Load(self.parse_memarg()?),
             0x29 => Inst::I64Load(self.parse_memarg()?),
+            0x2a => Inst::F32Load(self.parse_memarg()?),
+            0x2b => Inst::F64Load(self.parse_memarg()?),
+            0x2c => Inst::I32Load8S(self.parse_memarg()?),
             0x2d => Inst::I32Load8U(self.parse_memarg()?),
+            0x2e => Inst::I32Load16S(self.parse_memarg()?),
             0x2f => Inst::I32Load16U(self.parse_memarg()?),
+            /* todo */
+            0x35 => Inst::I64Load32U(self.parse_memarg()?),
             0x36 => Inst::I32Store(self.parse_memarg()?),
             0x37 => Inst::I64Store(self.parse_memarg()?),
+            0x39 => Inst::F64Store(self.parse_memarg()?),
             0x3a => Inst::I32Store8(self.parse_memarg()?),
             0x3b => Inst::I32Store16(self.parse_memarg()?),
+            0x3c => Inst::I64Store8(self.parse_memarg()?),
+            0x3d => Inst::I64Store16(self.parse_memarg()?),
+            0x3e => Inst::I64Store32(self.parse_memarg()?),
+            0x3f => {
+                self.parse_byte()?;
+                Inst::MemorySize
+            },
+            0x40 => {
+                self.parse_byte()?;
+                Inst::MemoryGrow
+            },
             0x41 => Inst::I32Const(self.parse_i32()?),
             0x42 => Inst::I64Const(self.parse_i64()?),
             0x44 => Inst::F64Const(self.parse_f64()?),
@@ -579,23 +621,74 @@ impl Parser {
             0x47 => Inst::I32Ne,
             0x48 => Inst::I32LT_S,
             0x49 => Inst::I32LT_U,
-            0x4c => Inst::I32GE_S,
+            0x4a => Inst::I32GT_S,
+            0x4b => Inst::I32GT_U,
+            0x4c => Inst::I32LE_S,
+            0x4d => Inst::I32LE_U,
+            0x4e => Inst::I32GE_S,
+            0x4F => Inst::I32GE_U,
 
+            0x50 => Inst::I64Eqz,
+            0x51 => Inst::I64Eq,
+            0x52 => Inst::I64Ne,
+            0x53 => Inst::I64LtS,
+            0x54 => Inst::I64LtU,
+            0x55 => Inst::I64GtS,
+            0x56 => Inst::I64GtU,
+
+
+            0x61 => Inst::F64Eq,
+            0x62 => Inst::F64Ne,
+            0x63 => Inst::F64Lt,
             0x64 => Inst::F64Gt,
+            0x65 => Inst::F64Le,
+            0x66 => Inst::F64Ge,
+
+            0x67 => Inst::I32Clz,
+            0x68 => Inst::I32Ctz,
+            0x69 => Inst::I32Popcnt,
             0x6a => Inst::I32Add,
             0x6b => Inst::I32Sub,
             0x6c => Inst::I32Mul,
-            0x78 => Inst::I32Rotr,
+            0x6d => Inst::I32Div_S,
+            0x6e => Inst::I32Div_U,
+            0x6f => Inst::I32Rem_S,
+            0x70 => Inst::I32Rem_U,
+            0x71 => Inst::I32And,
+            0x72 => Inst::I32Or,
+            0x73 => Inst::I32Xor,
             0x74 => Inst::I32Shl,
+            0x75 => Inst::I32Shr_S,
+            0x76 => Inst::I32Shr_U,
+            0x77 => Inst::I32Rotl,
+            0x78 => Inst::I32Rotr,
+
             0x7c => Inst::I64Add,
             0x7e => Inst::I64Mul,
+            0x83 => Inst::I64And,
             0x84 => Inst::I64Or,
             0x85 => Inst::I64Xor,
             0x86 => Inst::I64Shl,
             0x88 => Inst::I64ShrU,
 
+            0x99 => Inst::F64Abs,
+            0x9a => Inst::F64Neg,
+            0x9b => Inst::F64Ceil,
+            0x9c => Inst::F64Floor,
+            0x9d => Inst::F64Trunc,
+            0x9e => Inst::F64Nearest,
+            0x9f => Inst::F64Sqrt,
+            0xa0 => Inst::F64Add,
+            0xa1 => Inst::F64Sub,
+            0xa2 => Inst::F64Mul,
+            0xa3 => Inst::F64Div,
+            0xa4 => Inst::F64Min,
+            0xa5 => Inst::F64Max,
+
             0xa7 => Inst::I32WrapI64,
             0xad => Inst::I64ExtendI32U,
+            0xb8 => Inst::F64ConvertI64U,
+            0xbf => Inst::F64ReinterpretI64,
             x => panic!("unknown op: 0x{x:x?}"),
         };
         Ok(inst)

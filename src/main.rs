@@ -222,6 +222,7 @@ fn main() {
         external_funcs: vec![("env".into(), "greet".into(), Rc::new(Greet))],
     };
 
+    println!("running");
     if let Some(start) = add_mod.start {
         let func = &add_mod[start];
         let mut locals = Locals { locals: vec![] };
