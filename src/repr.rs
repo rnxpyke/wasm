@@ -1,7 +1,7 @@
 use std::ops::Index;
 
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 #[repr(u8)]
 pub enum ValType {
     I32 = 0x7F,
@@ -33,10 +33,12 @@ impl TryFrom<u8> for ValType {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct ResultType {
     pub types: Vec<ValType>,
 }
 
+#[derive(Debug, Clone)]
 pub struct FuncType {
     pub from: ResultType,
     pub to: ResultType,
@@ -46,7 +48,7 @@ pub struct FuncType {
 pub struct TypeIdx(pub (crate) u32);
 
 #[derive(Debug, Copy, Clone)]
-pub struct FuncIdx(pub (crate) u32);
+pub struct FuncIdx(pub u32);
 
 #[derive(Debug, Copy, Clone)]
 pub struct TableIdx(pub (crate) u32);
@@ -55,7 +57,7 @@ pub struct MemIdx(pub (crate) u32);
 
 pub struct GlobalIdx(pub (crate) u32);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Locals {
     pub n: u32,
     pub t: ValType,
@@ -63,34 +65,15 @@ pub struct Locals {
 
 pub struct ExprBytes(pub Vec<u8>);
 
-#[derive(Debug)]
-pub enum Func {
-    Local {
-        typ: TypeIdx,
-        locals: Vec<Locals>,
-        body: Vec<Inst>,
-    },
-    External {
-        typ: TypeIdx,
-        import: usize,
-    },
+
+#[derive(Debug, Clone)]
+pub struct Func {
+    pub typ: TypeIdx,
+    pub locals: Vec<Locals>,
+    pub body: Vec<Inst>,
 }
 
-impl Func {
-    pub fn body(&self) -> Option<&Vec<Inst>> {
-        match self {
-            Func::Local { body, .. } => Some(&body),
-            Func::External { .. } => None,
-        }
-    }
 
-    pub fn typ(&self) -> TypeIdx {
-        match self {
-            Func::Local { typ, .. } => *typ,
-            Func::External { typ, .. } => *typ,
-        }
-    }
-}
 
 pub struct Table {
     pub(crate) reftype: Reftype,
@@ -243,7 +226,7 @@ pub struct MemArg {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LabelIdx(pub (crate) u32);
 
 #[derive(Debug, Copy, Clone)]
@@ -255,7 +238,7 @@ pub enum BlockType {
     Type(TypeIdx),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[repr(u8)]
 pub enum Inst {
     /// Control Instructions

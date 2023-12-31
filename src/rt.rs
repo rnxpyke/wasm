@@ -1,6 +1,6 @@
-use std::{ops::{Index, self}, rc::Rc};
+use std::{ops::{Index, self}, rc::Rc, cell::RefCell};
 
-use crate::repr::{LocalIdx, ResultType, Import, Func, Inst, Module};
+use crate::{repr::{LocalIdx, ResultType, Import, Func, Inst, Module, self}, instance::{Store, ModuleInst, FuncInst}};
 
 
 pub struct Locals {
@@ -83,15 +83,9 @@ pub enum Exception {
 }
 
 
-pub trait ExternalFunc {
-    fn call(&self, stack: &mut Stack, storage: &mut Storage) -> Result<(), Exception>;
-}
-
-#[derive(Default)]
-pub struct Machine {
+pub struct Machine<'a> {
     pub stack: Stack,
-    pub memory: Storage,
-    pub external_funcs: Vec<(String, String, Rc<dyn ExternalFunc>)>,
+    pub store: &'a mut Store,
 }
 
 
@@ -103,10 +97,30 @@ fn binop_i32(stack: &mut Stack, op: impl FnOnce(i32, i32) -> i32) -> Result<(), 
     Ok(())
 }
 
-impl Machine {
+
+
+impl Machine<'_> {
+    pub fn call(&mut self, func_addr: usize) -> Result<(), Exception> {
+        let func = self.store.funcs[func_addr].clone();
+        match func.as_ref() {
+            FuncInst::Local { typ, module, code } => {
+                let mut locals = get_locals(&mut self.stack, &typ.from, &code.locals)?;
+                match self.execute(module.clone(), &code.body, &mut locals) {
+                    Ok(()) => {}
+                    Err(Exception::Return) => {}
+                    Err(e) => return Err(e),
+                }
+                // TODO: check stack return effect
+            },
+            FuncInst::External { typ, func } => {
+                todo!()
+            },
+        }
+        Ok(())
+    }
     pub fn execute(
         &mut self,
-        module: &Module,
+        module: Rc<RefCell<ModuleInst>>,
         instructions: &[Inst],
         locals: &mut Locals,
     ) -> Result<(), Exception> {
@@ -122,25 +136,8 @@ impl Machine {
                 Inst::BreakIf(_) => todo!(),
                 Inst::Return => todo!(),
                 Inst::Call(func) => {
-                    let func = &module[*func];
-                    match func {
-                        Func::Local { typ, locals, body } => {
-                            let typ = &module[*typ];
-                            let mut locals = get_locals(&mut self.stack, &typ.from)?;
-                            match self.execute(module, &body, &mut locals) {
-                                Ok(()) => {}
-                                Err(Exception::Return) => {}
-                                Err(e) => return Err(e),
-                            }
-                            // TODO: check stack return effect
-                        }
-                        Func::External { typ, import } => {
-                            let import = &module.imports[*import];
-                            let func = self.find_import_func(&import)?;
-                            let Machine { stack, memory, .. } = self;
-                            func.call(stack, memory)?;
-                        }
-                    }
+                    let func_addr = module.borrow().func_addrs[func.0 as usize];
+                    self.call(func_addr)?
                 }
                 Inst::LocalGet(idx) => {
                     let local = locals[*idx];
@@ -157,18 +154,23 @@ impl Machine {
         }
         Ok(())
     }
+}
 
-    fn find_import_func(&self, import: &Import) -> Result<Rc<dyn ExternalFunc>, Error> {
-        for (module, name, func) in self.external_funcs.iter() {
-            if module == &import.module && name == &import.nm {
-                return Ok(func.clone());
-            }
-        }
-        Err(Error::FunctionNotFound)
+
+fn default_value(t: repr::ValType) -> Val {
+    match t {
+        repr::ValType::I32 => Val::I32(0),
+        repr::ValType::I64 => todo!(),
+        repr::ValType::F32 => Val::F32(0.0),
+        repr::ValType::F64 => todo!(),
+        repr::ValType::V128 => todo!(),
+        repr::ValType::FuncRef => todo!(),
+        repr::ValType::ExternRef => todo!(),
     }
 }
 
-fn get_locals(stack: &mut Stack, from: &ResultType) -> Result<Locals, Exception> {
+
+fn get_locals(stack: &mut Stack, from: &ResultType, locals: &[repr::Locals]) -> Result<Locals, Exception> {
     let mut vars = vec![];
     for param in from.types.iter() {
         println!("param: {param:?}");
@@ -177,5 +179,10 @@ fn get_locals(stack: &mut Stack, from: &ResultType) -> Result<Locals, Exception>
         vars.push(arg);
     }
     vars.reverse();
+    for extra in locals {
+        for _ in 0..extra.n {
+            vars.push(default_value(extra.t));    
+        }
+    }
     Ok(Locals { locals: vars })
 }

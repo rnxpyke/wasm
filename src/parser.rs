@@ -144,7 +144,7 @@ impl Parser {
             }
             let expr = self.parse_expr()?;
 
-            funcs.push(Func::Local {
+            funcs.push(Func {
                 typ: typidx,
                 locals,
                 body: expr,
@@ -538,15 +538,6 @@ impl Parser {
                             desc,
                         };
                         module.imports.push(import.clone());
-                        let idx = module.imports.len() - 1;
-                        match import.desc {
-                            ImportDesc::Func(typ) => {
-                                module.funcs.push(Func::External { typ, import: idx })
-                            }
-                            ImportDesc::Table {} => todo!(),
-                            ImportDesc::Mem {} => todo!(),
-                            ImportDesc::Global {} => todo!(),
-                        }
                     }
                 }
                 SectionId::Function => {
