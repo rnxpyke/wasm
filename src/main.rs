@@ -58,6 +58,7 @@ fn main() {
     let mut store = instance::Store {
         funcs: vec![],
         mems: vec![],
+        tables: vec![],
     };
 
     let externals = rocket_externals();

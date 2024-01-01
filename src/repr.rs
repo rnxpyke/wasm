@@ -75,12 +75,14 @@ pub struct Func {
 
 
 
-pub struct Table {
+#[derive(Copy, Clone)]
+pub struct TableType {
     pub(crate) reftype: Reftype,
     pub(crate) limits: Limits,
 }
 
-pub struct Mem {
+#[derive(Copy, Clone)]
+pub struct MemType {
     pub(crate) limits: Limits,
 }
 
@@ -135,11 +137,13 @@ pub struct Export {
     pub desc: ExportDesc,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub enum Reftype {
     Funcref,
     Externref,
 }
 
+#[derive(Copy, Clone)]
 pub struct Limits {
     pub(crate) min: u32,
     pub(crate) max: Option<u32>,
@@ -149,8 +153,8 @@ pub struct Limits {
 pub struct Module {
     pub types: Vec<FuncType>,
     pub funcs: Vec<Func>,
-    pub tables: Vec<Table>,
-    pub mems: Vec<Mem>,
+    pub tables: Vec<TableType>,
+    pub mems: Vec<MemType>,
     pub globals: Vec<Global>,
     pub elems: Vec<Elem>,
     pub datas: Vec<Data>,

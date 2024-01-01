@@ -198,15 +198,15 @@ impl Parser {
         Ok(limits)
     }
 
-    fn parse_tabletype(&mut self) -> Result<Table, io::Error> {
+    fn parse_tabletype(&mut self) -> Result<TableType, io::Error> {
         let reftype = self.parse_reftype()?;
         let limits = self.parse_limits()?;
-        Ok(Table { reftype, limits })
+        Ok(TableType { reftype, limits })
     }
 
-    fn parse_memtype(&mut self) -> Result<Mem, io::Error> {
+    fn parse_memtype(&mut self) -> Result<MemType, io::Error> {
         let limits = self.parse_limits()?;
-        Ok(Mem { limits })
+        Ok(MemType { limits })
     }
 
     fn parse_blocktype(&mut self) -> Result<BlockType, io::Error> {

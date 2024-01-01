@@ -1,6 +1,6 @@
 use std::{ops::{Index, self, IndexMut}, rc::Rc, cell::RefCell};
 
-use crate::{repr::{LocalIdx, ResultType, Inst, self}, instance::{Store, ModuleInst, FuncInst}};
+use crate::{repr::{LocalIdx, ResultType, Inst, self}, instance::{Store, ModuleInst, FuncInst, FuncAddr}};
 
 
 pub struct Locals {
@@ -32,7 +32,16 @@ pub enum Val {
     I32(i32),
     F32(f32),
     I64(i64),
+    Reference(Ref),
 }
+
+#[derive(Copy, Clone, Debug)]
+pub enum Ref {
+    Null(repr::Reftype),
+    Func(usize),
+    Extern(usize),
+}
+
 
 #[derive(Default, Debug)]
 pub struct Stack {
@@ -90,6 +99,7 @@ fn binop_i32(stack: &mut Stack, op: impl FnOnce(i32, i32) -> i32) -> Result<(), 
     let Val::I32(c2) = stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
     let Val::I32(c1) = stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
     let res = op(c1, c2);
+    println!("{:?} {:?} -> {:?}", c1, c2, res);
     stack.push(Val::I32(res));
     Ok(())
 }
@@ -135,8 +145,8 @@ fn i32shr_u(a: i32, b: i32) -> i32 {
 
 
 impl Machine<'_> {
-    pub fn call(&mut self, func_addr: usize) -> Result<(), Exception> {
-        let func = self.store.funcs[func_addr].clone();
+    pub fn call(&mut self, func_addr: FuncAddr) -> Result<(), Exception> {
+        let func = self.store.funcs[func_addr.0].clone();
         match func.as_ref() {
             FuncInst::Local { typ, module, code } => {
                 let mut locals = get_locals(&mut self.stack, &typ.from, &code.locals)?;
@@ -177,7 +187,7 @@ impl Machine<'_> {
                 Inst::Break(b) => return Err(Exception::Break(b.0 as usize)),
                 Inst::BreakIf(b) => {
                     let Val::I32(c) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
-                    if c <= 0 {
+                    if c != 0 {
                         return Err(Exception::Break(b.0 as usize));
                     }
                 },
@@ -185,6 +195,9 @@ impl Machine<'_> {
                 Inst::Call(func) => {
                     let func_addr = module.borrow().func_addrs[func.0 as usize];
                     self.call(func_addr)?
+                }
+                Inst::CallIndirect(typidx, tableidx) => {
+                    todo!();
                 }
                 Inst::Select => {
                     let Val::I32(c) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
@@ -229,7 +242,7 @@ impl Machine<'_> {
                 }
                 Inst::I32Load(memarg) => {
                     let mem_addr = module.borrow().mem_addrs[0];
-                    let mem = &mut self.store.mems[mem_addr];
+                    let mem = &mut self.store.mems[mem_addr.0];
                     let Val::I32(i) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
                     let ea = i as usize + memarg.offset as usize;
                     const N: usize = 32;
@@ -240,7 +253,7 @@ impl Machine<'_> {
                 }
                 Inst::I64Load(memarg) => {
                     let mem_addr = module.borrow().mem_addrs[0];
-                    let mem = &mut self.store.mems[mem_addr];
+                    let mem = &mut self.store.mems[mem_addr.0];
                     let Val::I32(i) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
                     let ea = i as usize + memarg.offset as usize;
                     const N: usize = 64;
@@ -251,7 +264,7 @@ impl Machine<'_> {
                 }
                 Inst::I32Store(memarg) => {
                     let mem_addr = module.borrow().mem_addrs[0];
-                    let mem = &mut self.store.mems[mem_addr];
+                    let mem = &mut self.store.mems[mem_addr.0];
                     let Val::I32(c) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
                     let Val::I32(i) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
                     let ea = i as usize + memarg.offset as usize;
@@ -262,7 +275,7 @@ impl Machine<'_> {
                 }
                 Inst::I32Store8(memarg) => {
                     let mem_addr = module.borrow().mem_addrs[0];
-                    let mem = &mut self.store.mems[mem_addr];
+                    let mem = &mut self.store.mems[mem_addr.0];
                     let Val::I32(c) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
                     let Val::I32(i) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
                     let ea = i as usize + memarg.offset as usize;
@@ -273,7 +286,7 @@ impl Machine<'_> {
                 }
                 Inst::I64Store(memarg) => {
                     let mem_addr = module.borrow().mem_addrs[0];
-                    let mem = &mut self.store.mems[mem_addr];
+                    let mem = &mut self.store.mems[mem_addr.0];
                     let Val::I64(c) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
                     let Val::I32(i) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
                     let ea = i as usize + memarg.offset as usize;
