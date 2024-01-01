@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, cell::RefCell, rc::Rc};
 
-use crate::{repr::{Func, FuncType, Inst, TypeIdx, Module}, rt::Val};
+use crate::{repr::{Func, FuncType, TypeIdx, Module}, rt::Val};
 
 pub enum FuncInst {
     Local { typ: FuncType, module: Rc<RefCell<ModuleInst>>, code: Func },
@@ -9,11 +9,42 @@ pub enum FuncInst {
 
 pub struct Store {
     pub funcs: Vec<Rc<FuncInst>>,
+    pub mems: Vec<MemInstInner>
+}
+
+#[derive(Clone)]
+pub struct MemInst {
+    cell: Rc<RefCell<MemInstInner>>
+}
+
+impl MemInst {
+    pub fn new(bytes: usize) -> Self {
+        Self {
+            cell: Rc::new(RefCell::new(MemInstInner::new(bytes)))
+        }
+    }
+}
+
+pub const WASM_PAGE_SIZE: usize = 65536;
+
+pub struct MemInstInner {
+    pub data: Vec<u8>
+}
+
+impl MemInstInner {
+    fn new(bytes: usize) -> Self {
+        Self { data: vec![0u8; bytes] }
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
 }
 
 pub struct ModuleInst {
     types: Vec<FuncType>,
     pub func_addrs: Vec<usize>,
+    pub mem_addrs: Vec<usize>,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
@@ -67,6 +98,7 @@ pub fn instantiate(module: &Module, store: &mut Store, mut externals: Externals)
     let inst = Rc::new(RefCell::new(ModuleInst {
         types: vec![],
         func_addrs: vec![],
+        mem_addrs: vec![],
     }));
     for import in &module.imports {
         println!("{:?}::{:?}", import.module, import.nm);
@@ -92,5 +124,10 @@ pub fn instantiate(module: &Module, store: &mut Store, mut externals: Externals)
         inst.borrow_mut().func_addrs.push(idx);
     }
     
+    let mem_addr = store.mems.len();
+    store.mems.push(MemInstInner::new(WASM_PAGE_SIZE * 2));
+    inst.borrow_mut().mem_addrs.push(mem_addr);
+
+
     return inst;
 }

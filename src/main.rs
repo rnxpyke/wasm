@@ -27,15 +27,15 @@ impl Args {
 
 fn rocket_externals() -> Externals {
     let mut vals = BTreeMap::new();
-    let atan = Box::new(FFiFunc(|a: &mut Store, vals: &[Val]| vec![]));
-    let clear_screen = Box::new(FFiFunc(|a: &mut Store, vals: &[Val]| vec![]));
-    let cos = Box::new(FFiFunc(|a: &mut Store, vals: &[Val]| vec![]));
-    let sin = Box::new(FFiFunc(|a: &mut Store, vals: &[Val]| vec![]));
-    let draw_bullet = Box::new(FFiFunc(|a: &mut Store, vals: &[Val]| vec![]));
-    let draw_enemy = Box::new(FFiFunc(|a: &mut Store, vals: &[Val]| vec![]));
-    let draw_particle = Box::new(FFiFunc(|a: &mut Store, vals: &[Val]| vec![]));
-    let draw_player = Box::new(FFiFunc(|a: &mut Store, vals: &[Val]| vec![]));
-    let draw_score = Box::new(FFiFunc(|a: &mut Store, vals: &[Val]| vec![]));
+    let atan = Box::new(FFiFunc(|_a: &mut Store, _vals: &[Val]| vec![]));
+    let clear_screen = Box::new(FFiFunc(|_a: &mut Store, _vals: &[Val]| vec![]));
+    let cos = Box::new(FFiFunc(|_a: &mut Store, _vals: &[Val]| vec![]));
+    let sin = Box::new(FFiFunc(|_a: &mut Store, _vals: &[Val]| vec![]));
+    let draw_bullet = Box::new(FFiFunc(|_a: &mut Store, _vals: &[Val]| vec![]));
+    let draw_enemy = Box::new(FFiFunc(|_a: &mut Store, _vals: &[Val]| vec![]));
+    let draw_particle = Box::new(FFiFunc(|_a: &mut Store, _vals: &[Val]| vec![]));
+    let draw_player = Box::new(FFiFunc(|_a: &mut Store, _vals: &[Val]| vec![]));
+    let draw_score = Box::new(FFiFunc(|_a: &mut Store, _vals: &[Val]| vec![]));
     vals.insert(Name::new("env","Math_atan"), ExternVal::ExternalFunc(atan));
     vals.insert(Name::new("env", "clear_screen"), ExternVal::ExternalFunc(clear_screen));
     vals.insert(Name::new("env", "cos"), ExternVal::ExternalFunc(cos));
@@ -55,6 +55,7 @@ fn main() {
 
     let mut store = instance::Store {
         funcs: vec![],
+        mems: vec![],
     };
 
     let externals = rocket_externals();
