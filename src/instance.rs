@@ -50,14 +50,14 @@ pub struct ModuleInst {
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub struct Name {
     toplevel: String,
-    secondLevel: String,
+    secondlevel: String,
 }
 
 impl Name {
     pub fn new(top: &str, second: &str) -> Self {
         Self {
             toplevel: top.into(),
-            secondLevel: second.into(),
+            secondlevel: second.into(),
         }
     }
 }

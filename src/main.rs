@@ -1,8 +1,10 @@
 use std::{
-    rc::Rc, path::PathBuf, collections::BTreeMap,
+    path::PathBuf, collections::BTreeMap,
 };
 
-use wasm::{rt::{Stack, Storage, Exception, Machine, self, Val}, instance::{self, instantiate, Name, ExternVal, FFiFunc, Externals, WasmFfi, Store}};
+use wasm::rt::{Stack,  Machine, Val};
+use wasm::instance;
+use wasm::instance::{instantiate, Name, ExternVal, FFiFunc, Externals, Store};
 
 
 pub struct Args {

@@ -47,30 +47,6 @@ impl Stack {
     }
 }
 
-#[derive(Default)]
-pub struct Storage {
-    // TODO: change to byte array
-    pub slots: Vec<Val>,
-}
-
-impl Storage {
-    pub fn new(size: usize) -> Self {
-        Storage {
-            slots: vec![Val::I32(0); size],
-        }
-    }
-
-    fn load(&mut self, addr: usize) -> Result<Val, Error> {
-        return self.slots.get(addr).ok_or(Error::SegFault).cloned();
-    }
-
-    fn store(&mut self, addr: usize, val: Val) -> Result<(), Error> {
-        *self.slots.get_mut(addr).ok_or(Error::SegFault)? = val;
-        Ok(())
-    }
-}
-
-
 #[derive(Debug)]
 pub enum Error {
     StackEmpty,
@@ -234,7 +210,7 @@ impl Machine<'_> {
                 Inst::I32Shl => binop_i32(&mut self.stack, ops::Shr::shr)?,
                 Inst::I32Or => binop_i32(&mut self.stack, ops::BitOr::bitor)?,
                 Inst::I32Xor => binop_i32(&mut self.stack, ops::BitXor::bitxor)?,
-                Inst::I32Eq => binop_i32(&mut self.stack, |a, b| if a == b { 1} else { 0 })?,
+                Inst::I32Eq => binop_i32(&mut self.stack, |a, b| if a == b { 1 } else { 0 })?,
                 Inst::I32Eqz => unop_i32(&mut self.stack, |b| if b == 0 { 1 } else { 0 })?,
                 Inst::F32Add => todo!(),
                 Inst::I32Const(v) => self.stack.push(Val::I32(*v)),
