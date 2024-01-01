@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, cell::RefCell, rc::Rc};
 
-use crate::{repr::{Func, FuncType, TypeIdx, Module}, rt::Val};
+use crate::{repr::{Func, FuncType, TypeIdx, Module, Datamode}, rt::{Val, Machine, Stack, Locals}};
 
 pub enum FuncInst {
     Local { typ: FuncType, module: Rc<RefCell<ModuleInst>>, code: Func },
@@ -12,18 +12,6 @@ pub struct Store {
     pub mems: Vec<MemInstInner>
 }
 
-#[derive(Clone)]
-pub struct MemInst {
-    cell: Rc<RefCell<MemInstInner>>
-}
-
-impl MemInst {
-    pub fn new(bytes: usize) -> Self {
-        Self {
-            cell: Rc::new(RefCell::new(MemInstInner::new(bytes)))
-        }
-    }
-}
 
 pub const WASM_PAGE_SIZE: usize = 65536;
 
@@ -89,7 +77,6 @@ impl Externals {
         let v = self.values.remove(&name)?;
         match v {
             ExternVal::ExternalFunc(func) => Some(func),
-            _ => None,
         }
     }
 }
@@ -125,9 +112,23 @@ pub fn instantiate(module: &Module, store: &mut Store, mut externals: Externals)
     }
     
     let mem_addr = store.mems.len();
-    store.mems.push(MemInstInner::new(WASM_PAGE_SIZE * 2));
+    store.mems.push(MemInstInner::new(WASM_PAGE_SIZE * 100));
     inst.borrow_mut().mem_addrs.push(mem_addr);
 
-
+    for data in &module.datas {
+        if let Datamode::Active { memory, offset } = &data.mode {
+            assert!(memory.0 == 0);
+            // TODO: this whole thing is entirely not to spec: improve
+            let mut m = Machine { stack: Stack::new(), store };
+            m.execute(inst.clone(), &offset, &mut Locals::empty() ).unwrap();
+            println!("{:?}", m.stack);
+            let Val::I32(offset) = m.stack.pop().unwrap() else { panic!() };
+            let offset = offset as usize;
+            let len = data.init.len();
+            let mem = &mut m.store.mems[inst.borrow().mem_addrs[0] as usize];
+            mem.data[offset..offset+len].copy_from_slice(&data.init);
+            println!("initialized data");
+        }
+    }
     return inst;
 }

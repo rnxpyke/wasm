@@ -136,7 +136,8 @@ impl Parser {
         let mut funcs = vec![];
         for func in 0..elems {
             let typidx = func_types[func as usize];
-            let size = self.parse_u32()?;
+            // TODO: figure out how to use this field effectively
+            let _size = self.parse_u32()?;
             let mut locals = vec![];
             let local_count = self.parse_u32()?;
             for _ in 0..local_count {
@@ -206,10 +207,6 @@ impl Parser {
     fn parse_memtype(&mut self) -> Result<Mem, io::Error> {
         let limits = self.parse_limits()?;
         Ok(Mem { limits })
-    }
-
-    fn parse_elem(&mut self) -> Result<Elem, io::Error> {
-        todo!()
     }
 
     fn parse_blocktype(&mut self) -> Result<BlockType, io::Error> {

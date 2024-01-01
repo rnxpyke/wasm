@@ -7,6 +7,12 @@ pub struct Locals {
     pub locals: Vec<Val>,
 }
 
+impl Locals {
+    pub (crate) fn empty() -> Self {
+        Self { locals: vec![] }
+    }
+}
+
 impl Index<LocalIdx> for Locals {
     type Output = Val;
 
@@ -28,17 +34,20 @@ pub enum Val {
     I64(i64),
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Stack {
     items: Vec<Val>,
 }
 
 impl Stack {
+    pub (crate) fn new() -> Self {
+        Self { items: vec![] }
+    }
     fn push(&mut self, item: Val) {
         self.items.push(item);
     }
 
-    fn pop(&mut self) -> Result<Val, Error> {
+    pub (crate) fn pop(&mut self) -> Result<Val, Error> {
         self.items.pop().ok_or(Error::StackEmpty)
     }
 
@@ -214,6 +223,7 @@ impl Machine<'_> {
                 Inst::I32Eqz => unop_i32(&mut self.stack, |b| if b == 0 { 1 } else { 0 })?,
                 Inst::F32Add => todo!(),
                 Inst::I32Const(v) => self.stack.push(Val::I32(*v)),
+                Inst::I64Const(v) => self.stack.push(Val::I64(*v)),
                 Inst::Drop => {
                     self.stack.pop()?;
                 }
@@ -222,10 +232,22 @@ impl Machine<'_> {
                     let mem = &mut self.store.mems[mem_addr];
                     let Val::I32(i) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
                     let ea = i as usize + memarg.offset as usize;
-                    if ea + 32/8 > mem.len() { return Err(Exception::Runtime(Error::OobAccess { addr: ea, len: 32/8 })) }
-                    let val = &mem.data[ea..ea+32/8];
+                    const N: usize = 32;
+                    if ea + N/8 > mem.len() { return Err(Exception::Runtime(Error::OobAccess { addr: ea, len: N/8 })) }
+                    let val = &mem.data[ea..ea+N/8];
                     let val = i32::from_le_bytes(val.try_into().unwrap());
                     self.stack.push(Val::I32(val))
+                }
+                Inst::I64Load(memarg) => {
+                    let mem_addr = module.borrow().mem_addrs[0];
+                    let mem = &mut self.store.mems[mem_addr];
+                    let Val::I32(i) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
+                    let ea = i as usize + memarg.offset as usize;
+                    const N: usize = 64;
+                    if ea + N/8 > mem.len() { return Err(Exception::Runtime(Error::OobAccess { addr: ea, len: N/8 })) }
+                    let val = &mem.data[ea..ea+N/8];
+                    let val = i64::from_le_bytes(val.try_into().unwrap());
+                    self.stack.push(Val::I64(val))
                 }
                 Inst::I32Store(memarg) => {
                     let mem_addr = module.borrow().mem_addrs[0];
@@ -234,6 +256,28 @@ impl Machine<'_> {
                     let Val::I32(i) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
                     let ea = i as usize + memarg.offset as usize;
                     const N: usize = 32;
+                    if ea + N/8 > mem.len() { return Err(Exception::Runtime(Error::OobAccess { addr: ea, len: N/8 })) }
+                    let bytes = c.to_le_bytes();
+                    mem.data[ea..ea+N/8].copy_from_slice(&bytes);
+                }
+                Inst::I32Store8(memarg) => {
+                    let mem_addr = module.borrow().mem_addrs[0];
+                    let mem = &mut self.store.mems[mem_addr];
+                    let Val::I32(c) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
+                    let Val::I32(i) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
+                    let ea = i as usize + memarg.offset as usize;
+                    const N: usize = 8;
+                    if ea + N/8 > mem.len() { return Err(Exception::Runtime(Error::OobAccess { addr: ea, len: N/8 })) }
+                    let bytes = (c as i8).to_le_bytes();
+                    mem.data[ea..ea+N/8].copy_from_slice(&bytes);   
+                }
+                Inst::I64Store(memarg) => {
+                    let mem_addr = module.borrow().mem_addrs[0];
+                    let mem = &mut self.store.mems[mem_addr];
+                    let Val::I64(c) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
+                    let Val::I32(i) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
+                    let ea = i as usize + memarg.offset as usize;
+                    const N: usize = 64;
                     if ea + N/8 > mem.len() { return Err(Exception::Runtime(Error::OobAccess { addr: ea, len: N/8 })) }
                     let bytes = c.to_le_bytes();
                     mem.data[ea..ea+N/8].copy_from_slice(&bytes);
