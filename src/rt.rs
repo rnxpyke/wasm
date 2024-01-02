@@ -53,15 +53,20 @@ impl Stack {
         Self { items: vec![] }
     }
     fn push(&mut self, item: Val) {
+        println!("\tpush: {:?}", item);
         self.items.push(item);
     }
 
     pub (crate) fn pop(&mut self) -> Result<Val, Error> {
-        self.items.pop().ok_or(Error::StackEmpty)
+        let val = self.items.pop().ok_or(Error::StackEmpty)?;
+        println!("\tpop: {:?}", val);
+        return Ok(val);
     }
 
     fn peek(&self) -> Result<Val, Error> {
-        self.items.last().copied().ok_or(Error::StackEmpty)
+        let val = self.items.last().copied().ok_or(Error::StackEmpty)?;
+        println!("\tpeeked: {:?}", val);
+        return Ok(val);
     }
 }
 
@@ -99,7 +104,7 @@ fn binop_i32(stack: &mut Stack, op: impl FnOnce(i32, i32) -> i32) -> Result<(), 
     let Val::I32(c2) = stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
     let Val::I32(c1) = stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
     let res = op(c1, c2);
-    println!("{:?} {:?} -> {:?}", c1, c2, res);
+    println!("\t{:?} {:?} -> {:?}", c1, c2, res);
     stack.push(Val::I32(res));
     Ok(())
 }
@@ -107,6 +112,7 @@ fn binop_i32(stack: &mut Stack, op: impl FnOnce(i32, i32) -> i32) -> Result<(), 
 fn unop_i32(stack: &mut Stack, op: impl FnOnce(i32) -> i32) -> Result<(), Exception> {
     let Val::I32(val) = stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
     let res = op(val);
+    println!("\t{:?} -> {:?}", val, res);
     stack.push(Val::I32(res));
     Ok(())
 }
@@ -172,7 +178,7 @@ impl Machine<'_> {
         for inst in instructions {
             println!("{:?}", inst);
             match inst {
-                Inst::Unreachable => todo!(),
+                Inst::Unreachable => panic!("reached unreachable"),
                 Inst::Nop => todo!(),
                 Inst::Block(instructions) => {
                     match self.execute(module.clone(), &*instructions, locals) {
@@ -182,12 +188,22 @@ impl Machine<'_> {
                         Err(e) => return Err(e)
                     }
                 },
-                Inst::Loop(_) => todo!(),
+                Inst::Loop(instructions) => {
+                    loop {
+                        match self.execute(module.clone(), &*instructions, locals) {
+                            Ok(()) => break,
+                            Err(Exception::Break(0)) => continue,
+                            Err(Exception::Break(n)) => return Err(Exception::Break(n-1)),
+                            Err(e) => return Err(e)
+                        }
+                    }
+                },
                 Inst::IfElse(_, _) => todo!(),
                 Inst::Break(b) => return Err(Exception::Break(b.0 as usize)),
                 Inst::BreakIf(b) => {
                     let Val::I32(c) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
                     if c != 0 {
+                        println!("\tbreaking");
                         return Err(Exception::Break(b.0 as usize));
                     }
                 },
@@ -205,7 +221,7 @@ impl Machine<'_> {
                     let val1 = self.stack.pop()?;
                     if c != 0 {
                         self.stack.push(val1);
-                    } {
+                    } else {
                         self.stack.push(val2);
                     }
                 }
@@ -232,6 +248,7 @@ impl Machine<'_> {
                 Inst::I32Shl => binop_i32(&mut self.stack, ops::Shr::shr)?,
                 Inst::I32Or => binop_i32(&mut self.stack, ops::BitOr::bitor)?,
                 Inst::I32Xor => binop_i32(&mut self.stack, ops::BitXor::bitxor)?,
+                Inst::I32Rotl => binop_i32(&mut self.stack, |a,b| a.rotate_left(b as u32))?,
                 Inst::I32Eq => binop_i32(&mut self.stack, |a, b| if a == b { 1 } else { 0 })?,
                 Inst::I32Eqz => unop_i32(&mut self.stack, |b| if b == 0 { 1 } else { 0 })?,
                 Inst::F32Add => todo!(),
@@ -250,6 +267,17 @@ impl Machine<'_> {
                     let val = &mem.data[ea..ea+N/8];
                     let val = i32::from_le_bytes(val.try_into().unwrap());
                     self.stack.push(Val::I32(val))
+                }
+                Inst::I32Load8U(memarg) => {
+                    let mem_addr = module.borrow().mem_addrs[0];
+                    let mem = &mut self.store.mems[mem_addr.0];
+                    let Val::I32(i) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
+                    let ea = i as usize + memarg.offset as usize;
+                    const N: usize = 8;
+                    if ea + N/8 > mem.len() { return Err(Exception::Runtime(Error::OobAccess { addr: ea, len: N/8 })) }
+                    let val = &mem.data[ea..ea+N/8];
+                    let val = u8::from_le_bytes(val.try_into().unwrap());
+                    self.stack.push(Val::I32(val as i32))
                 }
                 Inst::I64Load(memarg) => {
                     let mem_addr = module.borrow().mem_addrs[0];
