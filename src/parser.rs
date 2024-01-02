@@ -314,11 +314,11 @@ impl Parser {
             0x01 => Inst::Nop,
             0x02 => {
                 let (bt, i) = self.parse_block()?;
-                Inst::Block(i)
+                Inst::Block(i.into())
             }
             0x03 => {
                 let (bt, i) = self.parse_block()?;
-                Inst::Loop(i)
+                Inst::Loop(i.into())
             }
             0x04 => {
                 let (bt, then, els) = self.parse_if()?;

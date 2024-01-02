@@ -242,15 +242,38 @@ pub enum BlockType {
     Type(TypeIdx),
 }
 
+#[derive(Clone)]
+pub struct Expr {
+    instructions: Vec<Inst>,
+}
+
+impl From<Vec<Inst>> for Expr {
+    fn from(value: Vec<Inst>) -> Self {
+        Self { instructions: value }
+    }
+}
+
+impl AsRef<[Inst]> for Expr {
+    fn as_ref(&self) -> &[Inst] {
+        &self.instructions
+    }
+}
+
+impl core::fmt::Debug for Expr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Expr").finish()
+    }
+}
+
 #[derive(Debug, Clone)]
 #[repr(u8)]
 pub enum Inst {
     /// Control Instructions
     Unreachable = 0x00,
     Nop = 0x01,
-    Block(Vec<Inst>) = 0x02,
-    Loop(Vec<Inst>) = 0x03,
-    IfElse(Vec<Inst>, Vec<Inst>) = 0x04,
+    Block(Expr) = 0x02,
+    Loop(Expr) = 0x03,
+    IfElse(Expr, Expr) = 0x04,
     Break(LabelIdx) = 0x0C,
     BreakIf(LabelIdx) = 0x0D,
     BreakTable(Vec<LabelIdx>, LabelIdx),

@@ -1,6 +1,6 @@
-use std::{ops::{Index, self, IndexMut}, rc::Rc, cell::RefCell};
+use std::{ops::{Index, self, IndexMut}, rc::Rc, cell::RefCell, sync::atomic::AtomicUsize};
 
-use crate::{repr::{LocalIdx, ResultType, Inst, self}, instance::{Store, ModuleInst, FuncInst, FuncAddr}};
+use crate::{repr::{LocalIdx, ResultType, Inst, self, MemArg}, instance::{Store, ModuleInst, FuncInst, FuncAddr}};
 
 
 pub struct Locals {
@@ -78,6 +78,7 @@ pub enum Error {
     LocalNotFound,
     WrongValType,
     OobAccess { addr: usize, len: usize },
+    InvalidAlignment,
 }
 
 impl From<Error> for Exception {
@@ -149,6 +150,19 @@ fn i32shr_u(a: i32, b: i32) -> i32 {
 }
 
 
+fn effective_address(stack: &mut Stack, memarg: MemArg) -> Result<usize, Exception> {
+    let Val::I32(i) = stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
+    let ea = i as usize + memarg.offset as usize;
+    println!("\tea: 0x{:0x?}", ea);
+    if memarg.align != 0 {
+        let is_aligned = ea & ((1 << (memarg.align - 1)) - 1) == 0;
+        if !is_aligned {
+            return Err(Exception::Runtime(Error::InvalidAlignment));
+        }
+    }
+    return Ok(ea)
+}
+
 
 impl Machine<'_> {
     pub fn call(&mut self, func_addr: FuncAddr) -> Result<(), Exception> {
@@ -175,13 +189,14 @@ impl Machine<'_> {
         instructions: &[Inst],
         locals: &mut Locals,
     ) -> Result<(), Exception> {
+        static COUNT: AtomicUsize = AtomicUsize::new(0);
         for inst in instructions {
-            println!("{:?}", inst);
+            println!("{}: {:?}", COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst), inst);
             match inst {
                 Inst::Unreachable => panic!("reached unreachable"),
                 Inst::Nop => todo!(),
                 Inst::Block(instructions) => {
-                    match self.execute(module.clone(), &*instructions, locals) {
+                    match self.execute(module.clone(), instructions.as_ref(), locals) {
                         Ok(()) => {},
                         Err(Exception::Break(0)) => return Ok(()),
                         Err(Exception::Break(n)) => return Err(Exception::Break(n-1)),
@@ -190,7 +205,7 @@ impl Machine<'_> {
                 },
                 Inst::Loop(instructions) => {
                     loop {
-                        match self.execute(module.clone(), &*instructions, locals) {
+                        match self.execute(module.clone(), instructions.as_ref(), locals) {
                             Ok(()) => break,
                             Err(Exception::Break(0)) => continue,
                             Err(Exception::Break(n)) => return Err(Exception::Break(n-1)),
@@ -260,8 +275,7 @@ impl Machine<'_> {
                 Inst::I32Load(memarg) => {
                     let mem_addr = module.borrow().mem_addrs[0];
                     let mem = &mut self.store.mems[mem_addr.0];
-                    let Val::I32(i) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
-                    let ea = i as usize + memarg.offset as usize;
+                    let ea = effective_address(&mut self.stack, *memarg)?;
                     const N: usize = 32;
                     if ea + N/8 > mem.len() { return Err(Exception::Runtime(Error::OobAccess { addr: ea, len: N/8 })) }
                     let val = &mem.data[ea..ea+N/8];
@@ -271,8 +285,7 @@ impl Machine<'_> {
                 Inst::I32Load8U(memarg) => {
                     let mem_addr = module.borrow().mem_addrs[0];
                     let mem = &mut self.store.mems[mem_addr.0];
-                    let Val::I32(i) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
-                    let ea = i as usize + memarg.offset as usize;
+                    let ea = effective_address(&mut self.stack, *memarg)?;
                     const N: usize = 8;
                     if ea + N/8 > mem.len() { return Err(Exception::Runtime(Error::OobAccess { addr: ea, len: N/8 })) }
                     let val = &mem.data[ea..ea+N/8];
@@ -282,8 +295,7 @@ impl Machine<'_> {
                 Inst::I64Load(memarg) => {
                     let mem_addr = module.borrow().mem_addrs[0];
                     let mem = &mut self.store.mems[mem_addr.0];
-                    let Val::I32(i) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
-                    let ea = i as usize + memarg.offset as usize;
+                    let ea = effective_address(&mut self.stack, *memarg)?;
                     const N: usize = 64;
                     if ea + N/8 > mem.len() { return Err(Exception::Runtime(Error::OobAccess { addr: ea, len: N/8 })) }
                     let val = &mem.data[ea..ea+N/8];
@@ -294,8 +306,7 @@ impl Machine<'_> {
                     let mem_addr = module.borrow().mem_addrs[0];
                     let mem = &mut self.store.mems[mem_addr.0];
                     let Val::I32(c) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
-                    let Val::I32(i) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
-                    let ea = i as usize + memarg.offset as usize;
+                    let ea = effective_address(&mut self.stack, *memarg)?;
                     const N: usize = 32;
                     if ea + N/8 > mem.len() { return Err(Exception::Runtime(Error::OobAccess { addr: ea, len: N/8 })) }
                     let bytes = c.to_le_bytes();
@@ -305,19 +316,17 @@ impl Machine<'_> {
                     let mem_addr = module.borrow().mem_addrs[0];
                     let mem = &mut self.store.mems[mem_addr.0];
                     let Val::I32(c) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
-                    let Val::I32(i) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
-                    let ea = i as usize + memarg.offset as usize;
+                    let ea = effective_address(&mut self.stack, *memarg)?;
                     const N: usize = 8;
                     if ea + N/8 > mem.len() { return Err(Exception::Runtime(Error::OobAccess { addr: ea, len: N/8 })) }
-                    let bytes = (c as i8).to_le_bytes();
+                    let bytes = (c as u8).to_le_bytes();
                     mem.data[ea..ea+N/8].copy_from_slice(&bytes);   
                 }
                 Inst::I64Store(memarg) => {
                     let mem_addr = module.borrow().mem_addrs[0];
                     let mem = &mut self.store.mems[mem_addr.0];
                     let Val::I64(c) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
-                    let Val::I32(i) = self.stack.pop()? else { return Err(Exception::Runtime(Error::WrongValType))};
-                    let ea = i as usize + memarg.offset as usize;
+                    let ea = effective_address(&mut self.stack, *memarg)?;
                     const N: usize = 64;
                     if ea + N/8 > mem.len() { return Err(Exception::Runtime(Error::OobAccess { addr: ea, len: N/8 })) }
                     let bytes = c.to_le_bytes();
@@ -347,7 +356,7 @@ fn default_value(t: repr::ValType) -> Val {
 fn get_locals(stack: &mut Stack, from: &ResultType, locals: &[repr::Locals]) -> Result<Locals, Exception> {
     let mut vars = vec![];
     for param in from.types.iter() {
-        println!("param: {param:?}");
+        println!("\tparam: {param:?}");
         let arg = stack.pop()?;
         // TODO: assert type
         vars.push(arg);
