@@ -31,7 +31,7 @@ fn write_wast_tokenization_test(writer: &mut dyn std::io::Write, wast: &WastFile
 fn tokenize_wast_{test_name}() {{
     let path = std::path::PathBuf::from(\"{filename}\");
     let content = std::fs::read_to_string(&path).unwrap();
-    let res = tokenize_script(&content).unwrap();
+    let _res = tokenize_script(&content).unwrap();
 }}
 "   , test_name = wast.name.replace("-", "_")
     , filename = wast.path.clone().into_os_string().into_string().unwrap()

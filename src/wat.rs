@@ -8,6 +8,7 @@ pub enum Token {
     Text(String),
     Number(isize),
     Name(String),
+    Comment(String),
 }
 
 #[derive(Debug)]
@@ -26,28 +27,32 @@ impl Tokenizer<'_> {
         self.input = self.input.trim_start();
     }
 
+    fn expect(&mut self, pat: &'static str) -> Result<(), TokenizeError> {
+        match self.input.strip_prefix(pat) {
+            Some(s) => self.input = s,
+            None => return Err(TokenizeError::FailedExpectedToken),
+        }
+        Ok(())
+    }
+
     fn try_left_paren(&mut self) -> Result<Token, TokenizeError> {
-        self.input.starts_with('(').then_some(()).ok_or(TokenizeError::FailedExpectedToken)?;
-        self.input = &self.input[1..];
+        self.expect("(")?;
         return Ok(Token::LeftParen)
     }
 
     fn try_right_paren(&mut self) -> Result<Token, TokenizeError> {
-        self.input.starts_with(')').then_some(()).ok_or(TokenizeError::FailedExpectedToken)?;
-        self.input = &self.input[1..];
+        self.expect(")")?;
         return Ok(Token::RightParen)
     }
 
     fn try_name(&mut self) -> Result<Token, TokenizeError> {
-        self.input.starts_with('$').then_some(()).ok_or(TokenizeError::FailedExpectedToken)?;
-        self.input = &self.input[1..];
+        self.expect("$")?;
         let Ok(Token::Atom(s)) = self.try_atom() else { return Err(TokenizeError::FailedExpectedToken) };
         return Ok(Token::Name(s));
     }
 
     fn try_string(&mut self) -> Result<Token, TokenizeError> {
-        self.input.starts_with('"').then_some(()).ok_or(TokenizeError::FailedExpectedToken)?;
-        self.input = &self.input[1..];
+        self.expect("\"")?;
         let mut it = self.input.char_indices();
         let mut pos = 0;
         loop {
@@ -106,6 +111,34 @@ impl Tokenizer<'_> {
         return Ok(Token::Number(num))
     }
 
+    fn try_comment(&mut self) -> Result<Token, TokenizeError> {
+        self.expect(";")?;
+        if self.input.starts_with(';') {
+            self.input = &self.input[1..];
+            // line comment
+            match self.input.split_once('\n') {
+                Some((comment, rest)) => {
+                    self.input = rest;
+                    return Ok(Token::Comment(comment.into()));
+                },
+                None => {
+                    let comment = self.input;
+                    self.input = "";
+                    return Ok(Token::Comment(comment.into()));
+                },
+            }
+        } else {
+            // block comment
+            match self.input.split_once(';') {
+                Some((comment, rest)) => {
+                    self.input = rest;
+                    return Ok(Token::Comment(comment.into()))
+                },
+                None => return Err(TokenizeError::FailedExpectedToken),
+            }
+        }
+    }
+
     fn next_token(&mut self) -> Result<Option<Token>, TokenizeError> {
         self.skip_whitespace();
         let Some(next_char) = self.input.chars().nth(0) else { return Ok(None) };
@@ -114,6 +147,13 @@ impl Tokenizer<'_> {
             ')' => self.try_right_paren().map(Some),
             '$' => self.try_name().map(Some),
             '"' => self.try_string().map(Some),
+            ';' => self.try_comment().map(Some),
+            '+' => { self.expect("+"); self.try_number().map(Some) }
+            '-' => { 
+                self.expect("-");  
+                let Token::Number(x) = self.try_number()? else { return Err(TokenizeError::FailedExpectedToken) };
+                return Ok(Some(Token::Number(-x)))
+            }
             a if a.is_alphabetic() => self.try_atom().map(Some),
             d if d.is_ascii_digit() => self.try_number().map(Some),
             _ => Err(TokenizeError::UnexpectedNextChar(next_char)),
@@ -125,7 +165,9 @@ pub fn tokenize_script(input: &str) -> Result<Vec<Token>, TokenizeError> {
     let mut tokens =  vec![];
     let mut tokenizer = Tokenizer { input };
     loop {
+        println!("input: {:?}", &tokenizer.input[0..tokenizer.input.len().min(10)]);
         let Some(token) = tokenizer.next_token()? else { return Ok(tokens) };
+        println!("tok: {:?}", &token);
         tokens.push(token);
     }
 }
