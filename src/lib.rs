@@ -4,3 +4,7 @@ pub mod rt;
 pub mod instance;
 pub mod scripts;
 pub mod wat;
+
+
+#[cfg(test)]
+pub mod tests;
