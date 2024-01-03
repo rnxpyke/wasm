@@ -183,13 +183,11 @@ pub fn instantiate(module: &Module, store: &mut Store, mut externals: Externals)
             // TODO: this whole thing is entirely not to spec: improve
             let mut m = Machine { stack: Stack::new(), store };
             m.execute(inst.clone(), &offset, &mut Locals::empty() ).unwrap();
-            println!("{:?}", m.stack);
             let Val::I32(offset) = m.stack.pop().unwrap() else { panic!() };
             let offset = offset as usize;
             let len = data.init.len();
             let mem = &mut m.store.mems[inst.borrow().mem_addrs[0].0];
             mem.data[offset..offset+len].copy_from_slice(&data.init);
-            println!("initialized data");
         }
     }
     return inst;

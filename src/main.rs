@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::{
     path::PathBuf, collections::BTreeMap,
 };
@@ -5,6 +6,7 @@ use std::{
 use wasm::rt::{Stack,  Machine, Val};
 use wasm::instance;
 use wasm::instance::{instantiate, Name, ExternVal, FFiFunc, Externals, Store};
+use wasm::scripts::parse_script;
 
 
 pub struct Args {
@@ -50,11 +52,8 @@ fn rocket_externals() -> Externals {
     Externals {values: vals }
 }
 
-fn main() {
-    println!("Hello, world!");
-    let args = Args::from_env();
-    let add_mod = wasm::parser::parse_file(&args.wasm).unwrap();
-
+fn rocket_example(path: &Path) {
+    let add_mod = wasm::parser::parse_file(path).unwrap();
     let mut store = instance::Store {
         funcs: vec![],
         mems: vec![],
@@ -69,10 +68,16 @@ fn main() {
         store: &mut store, 
     };
 
-    println!("running");
     if let Some(start) = add_mod.start {
         let start_func_addr = instance.borrow().func_addrs[start.0 as usize];
-        println!("startfunc: {:?}", start_func_addr);
         m.call(start_func_addr).unwrap();
     }
+}
+
+fn main() {
+    println!("Hello, world!");
+    let args = Args::from_env();
+    let script_str = std::fs::read_to_string(&args.wasm).unwrap();
+    println!("script: {}", &script_str);
+    let script = parse_script(&script_str).unwrap();    
 }

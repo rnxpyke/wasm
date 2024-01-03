@@ -8,5 +8,5 @@ edition = "2021"
 [dependencies]
 
 [profile.release]
-#strip = true
-#codegen-units = 1
+strip = true
+codegen-units = 1
