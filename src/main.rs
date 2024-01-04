@@ -74,10 +74,15 @@ fn rocket_example(path: &Path) {
     }
 }
 
-fn main() {
-    println!("Hello, world!");
-    let args = Args::from_env();
+fn wast_test(args: &Args) {
     let script_str = std::fs::read_to_string(&args.wasm).unwrap();
     println!("script: {}", &script_str);
     let script = parse_script(&script_str).unwrap();    
+}
+
+fn main() {
+    println!("Hello, world!");
+    let args = Args::from_env();
+    rocket_example(&args.wasm)
+    //wast_test(&args);
 }

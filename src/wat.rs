@@ -95,17 +95,25 @@ impl<'s> GostyleTokenizer<'s> {
     }
 
     fn acceptNameChar(&mut self) -> bool {
-        const SPECIALS: &'static [char] = &['_', '.', '+', '-', '*', '/'];
-        if self.accept(SPECIALS) {
-            return true;
-        }
-        if self.acceptLetter() {
-            return true;
-        }
-        if self.acceptDigit() {
-            return true;
-        }
-        return false;
+        let Some(c) = self.current().chars().next() else { return false };
+        if !c.is_ascii() { return false; }
+        if !c.is_ascii_graphic() { return false; }
+        match c {
+            ' ' => return false,
+            '\'' => return false,
+            '"' => return false,
+            ',' => return false,
+            ';' => return false,
+            '(' => return false,
+            ')' => return false,
+            '[' => return false,
+            ']' => return false,
+            '{' => return false,
+            '}' => return false,
+            _ => {}
+        };
+        self.pos += c.len_utf8();
+        return true;
     }
 
     fn expectName(&mut self) -> Result<(), TokenizeError> {
@@ -147,6 +155,38 @@ impl<'s> GostyleTokenizer<'s> {
         }
         Ok(())
     }
+
+    fn acceptString(&mut self, s: &str) -> bool {
+        if self.current().starts_with(s) {
+            self.pos += s.len();
+            return true;
+        }
+        return false;
+    }
+
+    fn acceptAnyChar(&mut self) -> bool {
+        if let Some(c) = self.current().chars().next() {
+            self.pos += c.len_utf8();
+            return true;
+        }
+        return false;
+    }
+
+    fn expectString(&mut self) -> Result<(), TokenizeError> {
+        self.expectChar('"')?;
+        loop {
+            if self.acceptChar('"') {
+                break;
+            }
+            if self.acceptString("\\n") { continue; }
+            if self.acceptString("\\t") { continue; }
+            if self.acceptString("\\\"") { continue; }
+            if self.acceptString("\'") { continue; }
+            if self.acceptString("\\\\") { continue; }
+            if !self.acceptAnyChar() { return Err(TokenizeError::FailedExpectedToken); }
+        }
+        Ok(())
+    }
 }
 
 impl Tokenizer<'_> {
@@ -181,21 +221,11 @@ impl Tokenizer<'_> {
     }
 
     fn try_string(&mut self) -> Result<Token, TokenizeError> {
-        self.expect("\"")?;
-        let mut it = self.input.char_indices();
-        let mut pos = 0;
-        loop {
-            let Some((idx, char)) = it.next() else { return Err(TokenizeError::FailedExpectedToken) };
-            if char == '"' {
-                pos = idx;
-                break;
-            }
-        }
-        let (escaped, rest) = self.input.split_at(pos);
-        self.input = rest;
-        self.input.starts_with('"').then_some(()).ok_or(TokenizeError::FailedExpectedToken)?;
-        self.input = &self.input[1..];
-       return Ok(Token::Text(FromStr::from_str(escaped).unwrap()))
+        let mut gostyle = GostyleTokenizer { input: self.input, pos: 0 };
+        gostyle.expectString()?;
+        let text = gostyle.emit();
+        self.input = gostyle.input;
+        return Ok(Token::Text(FromStr::from_str(text).unwrap()))
     }
 
     fn try_atom(&mut self) -> Result<Token, TokenizeError> {
@@ -214,7 +244,11 @@ impl Tokenizer<'_> {
             match char {
                 '_' => {},
                 '.' => {},
-                _ => break
+                '=' => {
+                    pos = idx;
+                    break;
+                },
+                _ => break,
             };
             pos = idx;
         }
@@ -281,7 +315,7 @@ pub fn tokenize_script(input: &str) -> Result<Vec<Token>, TokenizeError> {
     let mut tokens =  vec![];
     let mut tokenizer = Tokenizer { input };
     loop {
-        println!("input: {:?}", &tokenizer.input[0..tokenizer.input.len().min(10)]);
+        println!("input: {:?}", &tokenizer.input.chars().into_iter().take(10).collect::<String>());
         let Some(token) = tokenizer.next_token()? else { return Ok(tokens) };
         println!("tok: {:?}", &token);
         tokens.push(token);
