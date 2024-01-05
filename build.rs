@@ -38,6 +38,19 @@ fn tokenize_wast_{test_name}() {{
     ).unwrap();
 }
 
+fn write_wast_script_test(writer: &mut dyn std::io::Write, wast: &WastFile) {
+    write!(writer, "
+    #[test]
+    fn wast_script_{test_name}() {{
+        let path = std::path::PathBuf::from(\"{filename}\");
+        let content = std::fs::read_to_string(&path).unwrap();
+        let _res = run_script(&content).unwrap();
+    }}
+    "   , test_name = wast.name.replace("-", "_")
+        , filename = wast.path.clone().into_os_string().into_string().unwrap()
+        ).unwrap();
+}
+
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     let out_dir = std::env::var("OUT_DIR").unwrap();
@@ -46,5 +59,8 @@ fn main() {
     let wast_files = wast_files();
     for wast in &wast_files {
         write_wast_tokenization_test(&mut f, &wast);
+    }
+    for wast in &wast_files {
+        write_wast_script_test(&mut f, &wast);
     }
 }

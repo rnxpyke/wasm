@@ -6,7 +6,7 @@ use std::{
 use wasm::rt::{Stack,  Machine, Val};
 use wasm::instance;
 use wasm::instance::{instantiate, Name, ExternVal, FFiFunc, Externals, Store};
-use wasm::scripts::parse_script;
+use wasm::scripts::run_script;
 
 
 pub struct Args {
@@ -76,13 +76,12 @@ fn rocket_example(path: &Path) {
 
 fn wast_test(args: &Args) {
     let script_str = std::fs::read_to_string(&args.wasm).unwrap();
-    println!("script: {}", &script_str);
-    let script = parse_script(&script_str).unwrap();    
+    let script = run_script(&script_str);    
 }
 
 fn main() {
     println!("Hello, world!");
     let args = Args::from_env();
-    rocket_example(&args.wasm)
-    //wast_test(&args);
+    //rocket_example(&args.wasm)
+    wast_test(&args);
 }

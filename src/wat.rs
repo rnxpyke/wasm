@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Token {
     LeftParen,
     RightParen,
@@ -315,9 +315,20 @@ pub fn tokenize_script(input: &str) -> Result<Vec<Token>, TokenizeError> {
     let mut tokens =  vec![];
     let mut tokenizer = Tokenizer { input };
     loop {
-        println!("input: {:?}", &tokenizer.input.chars().into_iter().take(10).collect::<String>());
         let Some(token) = tokenizer.next_token()? else { return Ok(tokens) };
-        println!("tok: {:?}", &token);
+        tokens.push(token);
+    }
+}
+
+pub fn tokenize_script_without_ws(input: &str) -> Result<Vec<Token>, TokenizeError> {
+    let mut tokens =  vec![];
+    let mut tokenizer = Tokenizer { input };
+    loop {
+        let Some(token) = tokenizer.next_token()? else { return Ok(tokens) };
+        match token {
+            Token::Comment(_) => continue,
+            _ => {},
+        };
         tokens.push(token);
     }
 }
