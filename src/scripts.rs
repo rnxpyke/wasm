@@ -104,65 +104,14 @@ impl Context {
 #[derive(Debug)]
 pub enum ScriptError {}
 
-fn command_assert_invalid(ctx: &mut Context, args: VecDeque<Tree>) -> Result<(), ScriptError> {
-    Ok(())
-}
-
-fn command_module(ctx: &mut Context, args: VecDeque<Tree>) -> Result<(), ScriptError> {
-    Ok(())
-}
-
-fn command_assert_return(ctx: &mut Context, args: VecDeque<Tree>) -> Result<(), ScriptError> {
-    Ok(())
-}
-
-fn command_invoke(ctx: &mut Context, args: VecDeque<Tree>) -> Result<(), ScriptError> {
-    Ok(())
-}
-
-fn command_assert_malformed(ctx: &mut Context, args: VecDeque<Tree>) -> Result<(), ScriptError> {
-    Ok(())
-}
-
-fn command_assert_trap(ctx: &mut Context, args: VecDeque<Tree>) -> Result<(), ScriptError> {
-    Ok(())
-}
-
-fn command_register(ctx: &mut Context, args: VecDeque<Tree>) -> Result<(), ScriptError> {
-    Ok(())
-}
-
-fn assert_unlinkable(ctx: &mut Context, args: VecDeque<Tree>) -> Result<(), ScriptError> {
-    Ok(())
-}
-
-fn command_assert_exhaustion(ctx: &mut Context, args: VecDeque<Tree>) -> Result<(), ScriptError> {
-    Ok(())
-}
-
-fn command_assert_unlinkable(ctx: &mut Context, args: VecDeque<Tree>) -> Result<(), ScriptError> {
-    Ok(())
-}
-
-
-
 pub fn run_script(input: &str) -> Result<(), ScriptError> {
     let tokens = text::tokenize_script_without_ws(input).unwrap();
     let trees = tokens_to_tree(tokens).unwrap();
-    let mut ctx = Context::new();
+    let ctx = Context::new();
     for tree in trees {
         let (cmd, args) = to_command(tree).unwrap();
         //println!("{:?}", args);
-        match cmd.as_ref() {
-            "assert_invalid" => command_assert_invalid(&mut ctx, args)?,
-            "module" => command_module(&mut ctx, args)?,
-            "assert_return" => command_assert_return(&mut ctx, args)?,
-            "invoke" => command_invoke(&mut ctx, args)?,
-            "assert_trap" => command_assert_trap(&mut ctx, args)?,
-            "assert_malformed" => command_assert_malformed(&mut ctx, args)?,
-            "assert_exhaustion" => command_assert_exhaustion(&mut ctx, args)?,
-            "assert_unlinkable" => command_assert_unlinkable(&mut ctx, args)?,
-            "register" => command_register(&mut ctx, args)?,
+        match cmd.as_str() {
             a => panic!("unknown command: {:?}", a),
         };
     }

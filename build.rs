@@ -38,6 +38,7 @@ fn tokenize_wast_{test_name}() {{
     ).unwrap();
 }
 
+#[allow(dead_code)]
 fn write_wast_script_test(writer: &mut dyn std::io::Write, wast: &WastFile) {
     write!(writer, "
     #[test]
@@ -60,7 +61,9 @@ fn main() {
     for wast in &wast_files {
         write_wast_tokenization_test(&mut f, &wast);
     }
+    /*
     for wast in &wast_files {
         write_wast_script_test(&mut f, &wast);
     }
+    */
 }
