@@ -173,6 +173,7 @@ impl Machine<'_> {
                 match self.execute(module.clone(), &code.body, &mut locals) {
                     Ok(()) => {}
                     Err(Exception::Return) => {}
+                    Err(Exception::Break(_n)) => panic!("can't break through function"),
                     Err(e) => return Err(e),
                 }
                 // TODO: check stack return effect
@@ -254,13 +255,13 @@ impl Machine<'_> {
                 }
                 Inst::I32Add => binop_i32(&mut self.stack, ops::Add::add)?,
                 Inst::I32Sub => binop_i32(&mut self.stack, ops::Sub::sub)?,
-                Inst::I32GT_U => binop_i32(&mut self.stack, i32gt_u)?,
-                Inst::I32LT_U => binop_i32(&mut self.stack, i32lt_u)?,
-                Inst::I32GE_U => binop_i32(&mut self.stack, i32ge_u)?,
-                Inst::I32LE_U => binop_i32(&mut self.stack, i32le_u)?,
+                Inst::I32GtU => binop_i32(&mut self.stack, i32gt_u)?,
+                Inst::I32LtU => binop_i32(&mut self.stack, i32lt_u)?,
+                Inst::I32GeU => binop_i32(&mut self.stack, i32ge_u)?,
+                Inst::I32LeU => binop_i32(&mut self.stack, i32le_u)?,
                 Inst::I32And => binop_i32(&mut self.stack, ops::BitAnd::bitand)?,
-                Inst::I32Shr_U => binop_i32(&mut self.stack, i32shr_u)?,
-                Inst::I32Shl => binop_i32(&mut self.stack, ops::Shr::shr)?,
+                Inst::I32ShrU => binop_i32(&mut self.stack, i32shr_u)?,
+                Inst::I32Shl => binop_i32(&mut self.stack, ops::Shl::shl)?,
                 Inst::I32Or => binop_i32(&mut self.stack, ops::BitOr::bitor)?,
                 Inst::I32Xor => binop_i32(&mut self.stack, ops::BitXor::bitxor)?,
                 Inst::I32Rotl => binop_i32(&mut self.stack, |a,b| a.rotate_left(b as u32))?,

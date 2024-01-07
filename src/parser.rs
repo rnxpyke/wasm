@@ -234,19 +234,6 @@ impl Parser {
     }
 
     fn parse_if(&mut self) -> Result<(BlockType, Vec<Inst>, Vec<Inst>), io::Error> {
-        let bt = self.parse_blocktype()?;
-        let mut ifis = vec![];
-        loop {
-            match self.peek_byte()? {
-                0x05 => {
-                    break;
-                }
-                0x0b => todo!(),
-                _ => panic!(),
-            }
-            ifis.push(self.parse_instr()?);
-        }
-        let mut elseis = self.parse_block()?;
         todo!()
     }
 
@@ -325,6 +312,7 @@ impl Parser {
                 todo!()
             }
             0x0C => Inst::Break(self.parse_labelidx()?),
+            0x0d => Inst::BreakIf(self.parse_labelidx()?),
             0x0e => {
                 let mut labels = vec![];
                 let count = self.parse_u32()?;
@@ -334,7 +322,6 @@ impl Parser {
                 let ln = self.parse_labelidx()?;
                 Inst::BreakTable(labels, ln)
             }
-            0x0d => Inst::BreakIf(self.parse_labelidx()?),
             0x0F => Inst::Return,
             0x10 => Inst::Call(self.parse_funcidx()?),
             0x11 => Inst::CallIndirect(self.parse_typeidx()?, self.parse_tableidx()?),
@@ -379,14 +366,14 @@ impl Parser {
             0x45 => Inst::I32Eqz,
             0x46 => Inst::I32Eq,
             0x47 => Inst::I32Ne,
-            0x48 => Inst::I32LT_S,
-            0x49 => Inst::I32LT_U,
-            0x4a => Inst::I32GT_S,
-            0x4b => Inst::I32GT_U,
-            0x4c => Inst::I32LE_S,
-            0x4d => Inst::I32LE_U,
-            0x4e => Inst::I32GE_S,
-            0x4F => Inst::I32GE_U,
+            0x48 => Inst::I32LtS,
+            0x49 => Inst::I32LtU,
+            0x4a => Inst::I32GtS,
+            0x4b => Inst::I32GtU,
+            0x4c => Inst::I32LeS,
+            0x4d => Inst::I32LeU,
+            0x4e => Inst::I32GeS,
+            0x4F => Inst::I32GeU,
 
             0x50 => Inst::I64Eqz,
             0x51 => Inst::I64Eq,
@@ -410,16 +397,16 @@ impl Parser {
             0x6a => Inst::I32Add,
             0x6b => Inst::I32Sub,
             0x6c => Inst::I32Mul,
-            0x6d => Inst::I32Div_S,
-            0x6e => Inst::I32Div_U,
-            0x6f => Inst::I32Rem_S,
-            0x70 => Inst::I32Rem_U,
+            0x6d => Inst::I32DivS,
+            0x6e => Inst::I32DivU,
+            0x6f => Inst::I32RemS,
+            0x70 => Inst::I32RemU,
             0x71 => Inst::I32And,
             0x72 => Inst::I32Or,
             0x73 => Inst::I32Xor,
             0x74 => Inst::I32Shl,
-            0x75 => Inst::I32Shr_S,
-            0x76 => Inst::I32Shr_U,
+            0x75 => Inst::I32ShrS,
+            0x76 => Inst::I32ShrU,
             0x77 => Inst::I32Rotl,
             0x78 => Inst::I32Rotr,
 
@@ -620,8 +607,6 @@ static ADD_MOD: &'static [u8] = include_bytes!("../examples/add.wasm");
 
 #[cfg(test)]
 fn parse_bytes(bytes: &'static [u8]) -> io::Result<Module> {
-    use std::io::BufReader;
-
     let reader = BufReader::new(bytes);
     let mut parser = Parser {
         stream: Box::new(reader),

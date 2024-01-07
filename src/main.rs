@@ -1,13 +1,10 @@
 use std::path::Path;
-use std::{
-    path::PathBuf, collections::BTreeMap,
-};
+use std::{collections::BTreeMap, path::PathBuf};
 
-use wasm::rt::{Stack,  Machine, Val};
 use wasm::instance;
-use wasm::instance::{instantiate, Name, ExternVal, FFiFunc, Externals, Store};
+use wasm::instance::{instantiate, ExternVal, Externals, FFiFunc, Name, Store};
+use wasm::rt::{Machine, Stack, Val};
 use wasm::scripts::run_script;
-
 
 pub struct Args {
     wasm: PathBuf,
@@ -40,16 +37,34 @@ fn rocket_externals() -> Externals {
     let draw_particle = Box::new(FFiFunc(|_a: &mut Store, _vals: &[Val]| vec![]));
     let draw_player = Box::new(FFiFunc(|_a: &mut Store, _vals: &[Val]| vec![]));
     let draw_score = Box::new(FFiFunc(|_a: &mut Store, _vals: &[Val]| vec![]));
-    vals.insert(Name::new("env","Math_atan"), ExternVal::ExternalFunc(atan));
-    vals.insert(Name::new("env", "clear_screen"), ExternVal::ExternalFunc(clear_screen));
+    vals.insert(Name::new("env", "Math_atan"), ExternVal::ExternalFunc(atan));
+    vals.insert(
+        Name::new("env", "clear_screen"),
+        ExternVal::ExternalFunc(clear_screen),
+    );
     vals.insert(Name::new("env", "cos"), ExternVal::ExternalFunc(cos));
     vals.insert(Name::new("env", "sin"), ExternVal::ExternalFunc(sin));
-    vals.insert(Name::new("env", "draw_bullet"), ExternVal::ExternalFunc(draw_bullet));
-    vals.insert(Name::new("env", "draw_enemy"), ExternVal::ExternalFunc(draw_enemy));
-    vals.insert(Name::new("env", "draw_particle"), ExternVal::ExternalFunc(draw_particle));
-    vals.insert(Name::new("env", "draw_player"), ExternVal::ExternalFunc(draw_player));
-    vals.insert(Name::new("env", "draw_score"), ExternVal::ExternalFunc(draw_score));
-    Externals {values: vals }
+    vals.insert(
+        Name::new("env", "draw_bullet"),
+        ExternVal::ExternalFunc(draw_bullet),
+    );
+    vals.insert(
+        Name::new("env", "draw_enemy"),
+        ExternVal::ExternalFunc(draw_enemy),
+    );
+    vals.insert(
+        Name::new("env", "draw_particle"),
+        ExternVal::ExternalFunc(draw_particle),
+    );
+    vals.insert(
+        Name::new("env", "draw_player"),
+        ExternVal::ExternalFunc(draw_player),
+    );
+    vals.insert(
+        Name::new("env", "draw_score"),
+        ExternVal::ExternalFunc(draw_score),
+    );
+    Externals { values: vals }
 }
 
 fn rocket_example(path: &Path) {
@@ -65,7 +80,7 @@ fn rocket_example(path: &Path) {
     let instance = instantiate(&add_mod, &mut store, externals);
     let mut m = Machine {
         stack: Stack::default(),
-        store: &mut store, 
+        store: &mut store,
     };
 
     if let Some(start) = add_mod.start {
@@ -74,14 +89,31 @@ fn rocket_example(path: &Path) {
     }
 }
 
-fn wast_test(args: &Args) {
-    let script_str = std::fs::read_to_string(&args.wasm).unwrap();
-    let script = run_script(&script_str);    
+
+
+fn run_wast(path: &Path) {
+    let script_str = std::fs::read_to_string(&path).unwrap();
+    run_script(&script_str).unwrap();
 }
 
+
 fn main() {
-    println!("Hello, world!");
     let args = Args::from_env();
-    //rocket_example(&args.wasm)
-    wast_test(&args);
+    let ext = args
+        .wasm
+        .extension()
+        .expect("file should have an extension")
+        .to_str()
+        .unwrap();
+
+    if ext == "wast" {
+        run_wast(&args.wasm);
+        return;
+    }
+
+    if args.wasm.ends_with("rocket.wasm") {
+        rocket_example(&args.wasm);
+        return;
+    }
 }
+
