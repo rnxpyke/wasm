@@ -292,7 +292,7 @@ impl Parser {
     }
 
     fn parse_instr(&mut self) -> Result<Inst, io::Error> {
-        static COUNT: AtomicU32 = AtomicU32::new(0); 
+        static COUNT: AtomicU32 = AtomicU32::new(0);
         let byte = self.parse_byte()?;
         let i = COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         println!("{i}: 0x{byte:x}");
@@ -354,11 +354,11 @@ impl Parser {
             0x3f => {
                 self.parse_byte()?;
                 Inst::MemorySize
-            },
+            }
             0x40 => {
                 self.parse_byte()?;
                 Inst::MemoryGrow
-            },
+            }
             0x41 => Inst::I32Const(self.parse_i32()?),
             0x42 => Inst::I64Const(self.parse_i64()?),
             0x44 => Inst::F64Const(self.parse_f64()?),
@@ -382,7 +382,6 @@ impl Parser {
             0x54 => Inst::I64LtU,
             0x55 => Inst::I64GtS,
             0x56 => Inst::I64GtU,
-
 
             0x61 => Inst::F64Eq,
             0x62 => Inst::F64Ne,

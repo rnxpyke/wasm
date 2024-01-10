@@ -1,6 +1,5 @@
 use std::ops::Index;
 
-
 #[derive(Debug, Copy, Clone)]
 #[repr(u8)]
 pub enum ValType {
@@ -45,17 +44,17 @@ pub struct FuncType {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub struct TypeIdx(pub (crate) u32);
+pub struct TypeIdx(pub(crate) u32);
 
 #[derive(Debug, Copy, Clone)]
 pub struct FuncIdx(pub u32);
 
 #[derive(Debug, Copy, Clone)]
-pub struct TableIdx(pub (crate) u32);
+pub struct TableIdx(pub(crate) u32);
 
-pub struct MemIdx(pub (crate) u32);
+pub struct MemIdx(pub(crate) u32);
 
-pub struct GlobalIdx(pub (crate) u32);
+pub struct GlobalIdx(pub(crate) u32);
 
 #[derive(Debug, Clone)]
 pub struct Locals {
@@ -65,15 +64,12 @@ pub struct Locals {
 
 pub struct ExprBytes(pub Vec<u8>);
 
-
 #[derive(Debug, Clone)]
 pub struct Func {
     pub typ: TypeIdx,
     pub locals: Vec<Locals>,
     pub body: Vec<Inst>,
 }
-
-
 
 #[derive(Copy, Clone)]
 pub struct TableType {
@@ -93,7 +89,6 @@ pub enum ElemMode {
     Active { table: TableIdx, offset: ExprBytes },
     Declarative,
 }
-
 
 pub struct Elem {
     typ: Reftype,
@@ -230,9 +225,8 @@ pub struct MemArg {
     pub(crate) offset: u32,
 }
 
-
 #[derive(Debug, Clone)]
-pub struct LabelIdx(pub (crate) u32);
+pub struct LabelIdx(pub(crate) u32);
 
 #[derive(Debug, Copy, Clone)]
 pub struct LocalIdx(pub(crate) u32);
@@ -250,7 +244,9 @@ pub struct Expr {
 
 impl From<Vec<Inst>> for Expr {
     fn from(value: Vec<Inst>) -> Self {
-        Self { instructions: value }
+        Self {
+            instructions: value,
+        }
     }
 }
 
@@ -341,7 +337,7 @@ pub enum Inst {
     I64GtU,
 
     /// 3. F32 compare
-    
+
     /// 4. F64 compare
     F64Eq,
     F64Ne,
@@ -381,8 +377,6 @@ pub enum Inst {
 
     /// 7. F32 math
     F32Add,
-    
-
 
     /// 8. F64 math
     F64Add,
@@ -392,7 +386,7 @@ pub enum Inst {
     F64Neg,
     F64Div,
     F64Min,
-    F64Max,    
+    F64Max,
     F64Ceil,
     F64Floor,
     F64Trunc,
@@ -404,6 +398,4 @@ pub enum Inst {
     F64ReinterpretI64,
     F64ConvertI64U,
     I64ExtendI32U,
-
-
 }

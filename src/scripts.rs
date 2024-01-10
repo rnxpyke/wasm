@@ -1,4 +1,7 @@
-use std::{iter::Peekable, collections::{VecDeque, BTreeMap}};
+use std::{
+    collections::{BTreeMap, VecDeque},
+    iter::Peekable,
+};
 
 use crate::repr::{self, Module};
 use crate::text;
@@ -20,14 +23,21 @@ pub enum Action {
     Get,
 }
 
-pub enum Assertion {
-
-}
+pub enum Assertion {}
 
 pub enum Meta {
-    Script { name: Option<String>, subscript: Script },
-    Input { name: Option<String>, val: String },
-    Output { name: Option<String>, val: String },
+    Script {
+        name: Option<String>,
+        subscript: Script,
+    },
+    Input {
+        name: Option<String>,
+        val: String,
+    },
+    Output {
+        name: Option<String>,
+        val: String,
+    },
 }
 
 #[derive(Debug)]
@@ -64,10 +74,8 @@ pub fn tree(tokens: &mut Peekable<impl Iterator<Item = Token>>) -> Result<Tree, 
             }
             let Some(Token::RightParen) = tokens.next() else { return Err(ParseError::UnexpectedToken)};
             Ok(Tree::List(inner))
-        },
-        a => {
-            Ok(Tree::Single(tokens.next().unwrap()))
         }
+        a => Ok(Tree::Single(tokens.next().unwrap())),
     }
 }
 
@@ -78,7 +86,7 @@ pub fn tokens_to_tree(tokens: Vec<Token>) -> Result<Vec<Tree>, ParseError> {
         trees.push(tree(&mut tokens)?);
     }
 
-    return Ok(trees)
+    return Ok(trees);
 }
 
 fn to_command(tree: Tree) -> Result<(String, VecDeque<Tree>), ParseError> {
@@ -88,7 +96,6 @@ fn to_command(tree: Tree) -> Result<(String, VecDeque<Tree>), ParseError> {
     Ok((cmd, items))
 }
 
-
 pub struct Context {
     registered_modules: BTreeMap<String, Module>,
     last_module: Option<Module>,
@@ -97,7 +104,11 @@ pub struct Context {
 
 impl Context {
     fn new() -> Self {
-        Self { registered_modules: BTreeMap::new(), last_module: None, errors: vec![] }
+        Self {
+            registered_modules: BTreeMap::new(),
+            last_module: None,
+            errors: vec![],
+        }
     }
 }
 

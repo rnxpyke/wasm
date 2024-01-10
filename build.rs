@@ -15,41 +15,54 @@ fn wast_files() -> Vec<WastFile> {
     let mut wast_files = vec![];
     for entry in entries {
         let entry = entry.unwrap();
-        if !entry.file_type().unwrap().is_file() { continue; }
+        if !entry.file_type().unwrap().is_file() {
+            continue;
+        }
         let name = entry.file_name().into_string().unwrap();
         if let Some(name) = name.strip_suffix(".wast") {
             eprintln!("{:?}", entry.path());
-            wast_files.push(WastFile { name: name.into(), path: entry.path() });
+            wast_files.push(WastFile {
+                name: name.into(),
+                path: entry.path(),
+            });
         }
     }
     return wast_files;
 }
 
 fn write_wast_tokenization_test(writer: &mut dyn std::io::Write, wast: &WastFile) {
-    write!(writer, "
+    write!(
+        writer,
+        "
 #[test]
 fn tokenize_wast_{test_name}() {{
     let path = std::path::PathBuf::from(\"{filename}\");
     let content = std::fs::read_to_string(&path).unwrap();
     let _res = tokenize_script(&content).unwrap();
 }}
-"   , test_name = wast.name.replace("-", "_")
-    , filename = wast.path.clone().into_os_string().into_string().unwrap()
-    ).unwrap();
+",
+        test_name = wast.name.replace("-", "_"),
+        filename = wast.path.clone().into_os_string().into_string().unwrap()
+    )
+    .unwrap();
 }
 
 #[allow(dead_code)]
 fn write_wast_script_test(writer: &mut dyn std::io::Write, wast: &WastFile) {
-    write!(writer, "
+    write!(
+        writer,
+        "
     #[test]
     fn wast_script_{test_name}() {{
         let path = std::path::PathBuf::from(\"{filename}\");
         let content = std::fs::read_to_string(&path).unwrap();
         let _res = run_script(&content).unwrap();
     }}
-    "   , test_name = wast.name.replace("-", "_")
-        , filename = wast.path.clone().into_os_string().into_string().unwrap()
-        ).unwrap();
+    ",
+        test_name = wast.name.replace("-", "_"),
+        filename = wast.path.clone().into_os_string().into_string().unwrap()
+    )
+    .unwrap();
 }
 
 fn main() {

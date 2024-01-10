@@ -89,13 +89,10 @@ fn rocket_example(path: &Path) {
     }
 }
 
-
-
 fn run_wast(path: &Path) {
     let script_str = std::fs::read_to_string(&path).unwrap();
     run_script(&script_str).unwrap();
 }
-
 
 fn main() {
     let args = Args::from_env();
@@ -116,4 +113,3 @@ fn main() {
         return;
     }
 }
-

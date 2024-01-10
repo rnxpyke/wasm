@@ -1,5 +1,4 @@
-use std::{str::FromStr, f64::NAN};
-
+use std::{f64::NAN, str::FromStr};
 
 #[derive(Debug, Clone)]
 pub struct TextToken(Vec<u8>);
@@ -39,9 +38,12 @@ pub struct Lexer<'s> {
 }
 
 type LexResult<T> = Result<T, TokenizeError>;
-type LexFn<'s, T> = fn (lexer: &mut Lexer<'s>) -> LexResult<T>;
+type LexFn<'s, T> = fn(lexer: &mut Lexer<'s>) -> LexResult<T>;
 
-fn parse_longest<'s, T: core::fmt::Debug>(lexer: &mut Lexer<'s>,  fns: &[LexFn<'s, T>]) -> LexResult<T> {
+fn parse_longest<'s, T: core::fmt::Debug>(
+    lexer: &mut Lexer<'s>,
+    fns: &[LexFn<'s, T>],
+) -> LexResult<T> {
     let conts = fns.into_iter().map(|f| {
         let mut l = lexer.clone();
         let res = f(&mut l);
@@ -61,7 +63,7 @@ impl<'s> Lexer<'s> {
         let mut chars = self.input.chars();
         let char = chars.next()?;
         self.input = chars.as_str();
-        return Some(char)
+        return Some(char);
     }
 
     fn accept_char(&mut self, c: char) -> bool {
@@ -78,7 +80,7 @@ impl<'s> Lexer<'s> {
             Some(rest) => {
                 self.input = rest;
                 true
-            },
+            }
             None => false,
         }
     }
@@ -150,7 +152,7 @@ impl<'s> Lexer<'s> {
                 text.push(a as u8 * 16 + b as u8);
             } else {
                 if let Some(c) = self.accept_next_char() {
-                    text.extend(c.encode_utf8(&mut[0,0,0,0]).as_bytes());
+                    text.extend(c.encode_utf8(&mut [0, 0, 0, 0]).as_bytes());
                 } else {
                     return Err(TokenizeError::UnexpectedEof);
                 }
@@ -164,12 +166,11 @@ impl<'s> Lexer<'s> {
         if !char.is_whitespace() {
             return Err(TokenizeError::UnexpectedNextChar(char));
         }
-        
+
         self.accept_next_char();
         self.input = self.input.trim_start();
         return Ok(Token::Whitespace);
     }
-
 
     fn accept_name_char(&mut self) -> Option<char> {
         let Some(c) = self.peek_next_char() else { return None };
@@ -191,7 +192,7 @@ impl<'s> Lexer<'s> {
             ']' => return None,
             '{' => return None,
             '}' => return None,
-            _ => return self.accept_next_char()
+            _ => return self.accept_next_char(),
         };
     }
 
@@ -238,7 +239,7 @@ impl<'s> Lexer<'s> {
             Some(d) => {
                 self.accept_next_char().unwrap();
                 Some(d)
-            },
+            }
             None => None,
         }
     }
@@ -249,14 +250,16 @@ impl<'s> Lexer<'s> {
             Some(d) => {
                 self.accept_next_char().unwrap();
                 Some(d)
-            },
+            }
             None => None,
         }
     }
 
     fn num(&mut self) -> LexResult<usize> {
         let mut num: usize = 0;
-        num += self.accept_digit().ok_or(TokenizeError::FailedExpectedToken)? as usize;
+        num += self
+            .accept_digit()
+            .ok_or(TokenizeError::FailedExpectedToken)? as usize;
         loop {
             self.accept_char('_');
             let Some(digit) = self.accept_digit() else { break };
@@ -268,12 +271,14 @@ impl<'s> Lexer<'s> {
 
     fn hexnum(&mut self) -> LexResult<usize> {
         let mut num: usize = 0;
-        num += self.accept_hexdigit().ok_or(TokenizeError::FailedExpectedToken)? as usize;
+        num += self
+            .accept_hexdigit()
+            .ok_or(TokenizeError::FailedExpectedToken)? as usize;
         loop {
             self.accept_char('_');
             let Some(digit) = self.accept_digit() else { break };
-            num  = num.wrapping_mul(16);
-            num  = num.wrapping_add(digit as usize);
+            num = num.wrapping_mul(16);
+            num = num.wrapping_add(digit as usize);
         }
         Ok(num)
     }
@@ -311,7 +316,7 @@ impl<'s> Lexer<'s> {
         println!("num: {:0x?}", num);
         match sign {
             Sign::Positive => Ok(Token::Int(num as isize)),
-            Sign::Negative => Ok(Token::Int((num as isize).overflowing_neg().0)), 
+            Sign::Negative => Ok(Token::Int((num as isize).overflowing_neg().0)),
         }
     }
 
@@ -389,7 +394,7 @@ impl<'s> Lexer<'s> {
                     break;
                 }
                 comment.push_str(";)");
-                continue; 
+                continue;
             }
             if self.accept_string("(;") {
                 depth += 1;
@@ -406,23 +411,26 @@ impl<'s> Lexer<'s> {
         if self.input.len() == 0 {
             return Ok(None);
         }
-        let res = parse_longest(self, &[
-            Lexer::lparen,
-            Lexer::rparen,
-            Lexer::equal,
-            Lexer::whitespace,
-            Lexer::name,
-            Lexer::string,
-            Lexer::nat,
-            Lexer::int,
-            Lexer::float,
-            Lexer::float_inf,
-            Lexer::float_nan,
-            Lexer::float_nan_hex,
-            Lexer::linecomment,
-            Lexer::blockcomment,
-            Lexer::atom,
-        ]);
+        let res = parse_longest(
+            self,
+            &[
+                Lexer::lparen,
+                Lexer::rparen,
+                Lexer::equal,
+                Lexer::whitespace,
+                Lexer::name,
+                Lexer::string,
+                Lexer::nat,
+                Lexer::int,
+                Lexer::float,
+                Lexer::float_inf,
+                Lexer::float_nan,
+                Lexer::float_nan_hex,
+                Lexer::linecomment,
+                Lexer::blockcomment,
+                Lexer::atom,
+            ],
+        );
 
         //println!("res: {:?}, {:?}", &res, self.input.chars().take(25).collect::<String>());
 
