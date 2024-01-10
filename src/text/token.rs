@@ -1,3 +1,6 @@
+use std::{str::FromStr, f64::NAN};
+
+
 #[derive(Debug, Clone)]
 pub struct TextToken(Vec<u8>);
 
@@ -11,6 +14,7 @@ pub enum Token {
     Nat(usize),
     Int(isize),
     Float(f64),
+    Equal,
     Comment(String),
     Whitespace,
 }
@@ -113,29 +117,43 @@ impl<'s> Lexer<'s> {
             if self.accept_char('"') {
                 break;
             }
-            if self.accept_string("\\n") {
-                text.extend("\n".as_bytes());
-                continue;
-            }
-            if self.accept_string("\\t") {
-                text.extend("\t".as_bytes());
-                continue;
-            }
-            if self.accept_string("\\\"") {
-                text.extend("\"".as_bytes());
-                continue;
-            }
-            if self.accept_string("\'") {
-                text.extend("\'".as_bytes());
-                continue;
-            }
             if self.accept_char('\\') {
-                todo!("escape sequences");
-            }
-            if let Some(c) = self.accept_next_char() {
-                text.extend(c.encode_utf8(&mut[0,0,0,0]).as_bytes());
+                if self.accept_char('n') {
+                    text.extend("\n".as_bytes());
+                    continue;
+                }
+                if self.accept_char('t') {
+                    text.extend("\t".as_bytes());
+                    continue;
+                }
+                if self.accept_char('\\') {
+                    text.extend("\\".as_bytes());
+                    continue;
+                }
+                if self.accept_char('\'') {
+                    text.extend("'".as_bytes());
+                    continue;
+                }
+                if self.accept_char('"') {
+                    text.extend("\"".as_bytes());
+                    continue;
+                }
+                if self.accept_char('u') {
+                    self.expect_char('{')?;
+                    let num = self.hexnum()?;
+                    self.expect_char('}')?;
+                    todo!("no idea what to do with hexnum");
+                    continue;
+                }
+                let Some(a) = self.accept_hexdigit() else { return Err(TokenizeError::FailedExpectedToken) };
+                let Some(b) = self.accept_hexdigit() else { return Err(TokenizeError::FailedExpectedToken) };
+                text.push(a as u8 * 16 + b as u8);
             } else {
-                return Err(TokenizeError::UnexpectedEof);
+                if let Some(c) = self.accept_next_char() {
+                    text.extend(c.encode_utf8(&mut[0,0,0,0]).as_bytes());
+                } else {
+                    return Err(TokenizeError::UnexpectedEof);
+                }
             }
         }
         Ok(Token::Text(TextToken(text)))
@@ -209,7 +227,7 @@ impl<'s> Lexer<'s> {
         match char {
             '_' => self.accept_next_char(),
             '.' => self.accept_next_char(),
-            '=' => None,
+            ':' => self.accept_next_char(),
             _ => None,
         }
     }
@@ -225,20 +243,51 @@ impl<'s> Lexer<'s> {
         }
     }
 
+    fn accept_hexdigit(&mut self) -> Option<u32> {
+        let char = self.peek_next_char()?;
+        match char.to_digit(16) {
+            Some(d) => {
+                self.accept_next_char().unwrap();
+                Some(d)
+            },
+            None => None,
+        }
+    }
+
     fn num(&mut self) -> LexResult<usize> {
         let mut num: usize = 0;
         num += self.accept_digit().ok_or(TokenizeError::FailedExpectedToken)? as usize;
         loop {
             self.accept_char('_');
             let Some(digit) = self.accept_digit() else { break };
-            num *= 10;
-            num += digit as usize;
+            num = num.wrapping_mul(10);
+            num = num.wrapping_add(digit as usize);
         }
         Ok(num)
     }
 
+    fn hexnum(&mut self) -> LexResult<usize> {
+        let mut num: usize = 0;
+        num += self.accept_hexdigit().ok_or(TokenizeError::FailedExpectedToken)? as usize;
+        loop {
+            self.accept_char('_');
+            let Some(digit) = self.accept_digit() else { break };
+            num  = num.wrapping_mul(16);
+            num  = num.wrapping_add(digit as usize);
+        }
+        Ok(num)
+    }
+
+    fn expect_nat(&mut self) -> LexResult<usize> {
+        if self.accept_string("0x") {
+            self.hexnum()
+        } else {
+            self.num()
+        }
+    }
+
     fn nat(&mut self) -> LexResult<Token> {
-        let num = self.num()?;
+        let num = self.expect_nat()?;
         Ok(Token::Nat(num))
     }
 
@@ -258,11 +307,55 @@ impl<'s> Lexer<'s> {
 
     fn int(&mut self) -> LexResult<Token> {
         let sign = self.sign()?;
-        let num = self.num()?;
+        let num = self.expect_nat()?;
+        println!("num: {:0x?}", num);
         match sign {
             Sign::Positive => Ok(Token::Int(num as isize)),
-            Sign::Negative => Ok(Token::Int(-(num as isize))), 
+            Sign::Negative => Ok(Token::Int((num as isize).overflowing_neg().0)), 
         }
+    }
+
+    fn float(&mut self) -> LexResult<Token> {
+        // TODO: exponents
+        let sign = self.accept_sign();
+        if self.accept_string("0x") {
+            let dec = self.hexnum()?;
+            self.expect_char('.')?;
+            let frac = self.hexnum().ok();
+            let floatstr = format!("{}.{}", dec, frac.unwrap_or(0));
+            let float = f64::from_str(&floatstr).unwrap();
+            Ok(Token::Float(float))
+        } else {
+            let dec = self.num()?;
+            self.expect_char('.')?;
+            let frac = self.num().ok();
+            let floatstr = format!("{}.{}", dec, frac.unwrap_or(0));
+            let float = f64::from_str(&floatstr).unwrap();
+            Ok(Token::Float(float))
+        }
+    }
+
+    fn float_inf(&mut self) -> LexResult<Token> {
+        let sign = self.accept_sign().unwrap_or(Sign::Positive);
+        self.expect_string("inf")?;
+        match sign {
+            Sign::Positive => Ok(Token::Float(f64::INFINITY)),
+            Sign::Negative => Ok(Token::Float(f64::NEG_INFINITY)),
+        }
+    }
+
+    fn float_nan(&mut self) -> LexResult<Token> {
+        let sign = self.accept_sign();
+        self.expect_string("nan")?;
+        Ok(Token::Float(f64::NAN))
+    }
+
+    fn float_nan_hex(&mut self) -> LexResult<Token> {
+        let sign = self.accept_sign();
+        self.expect_string("nan:0x")?;
+        let num = self.hexnum()?;
+        // TODO: change nan pattern
+        Ok(Token::Float(f64::NAN))
     }
 
     fn atom(&mut self) -> LexResult<Token> {
@@ -279,6 +372,36 @@ impl<'s> Lexer<'s> {
         Ok(Token::Atom(atom))
     }
 
+    fn equal(&mut self) -> LexResult<Token> {
+        self.expect_char('=')?;
+        Ok(Token::Equal)
+    }
+
+    fn blockcomment(&mut self) -> LexResult<Token> {
+        // TODO: not to spec
+        self.expect_string("(;")?;
+        let mut comment = String::new();
+        let mut depth = 1;
+        loop {
+            if self.accept_string(";)") {
+                depth -= 1;
+                if depth == 0 {
+                    break;
+                }
+                comment.push_str(";)");
+                continue; 
+            }
+            if self.accept_string("(;") {
+                depth += 1;
+                comment.push_str("(;");
+                continue;
+            }
+            let Some(char) = self.accept_next_char() else { return Err(TokenizeError::UnexpectedEof) };
+            comment.push(char);
+        }
+        Ok(Token::Comment(comment.to_string()))
+    }
+
     fn token(&mut self) -> LexResult<Option<Token>> {
         if self.input.len() == 0 {
             return Ok(None);
@@ -286,16 +409,22 @@ impl<'s> Lexer<'s> {
         let res = parse_longest(self, &[
             Lexer::lparen,
             Lexer::rparen,
+            Lexer::equal,
             Lexer::whitespace,
             Lexer::name,
             Lexer::string,
             Lexer::nat,
             Lexer::int,
+            Lexer::float,
+            Lexer::float_inf,
+            Lexer::float_nan,
+            Lexer::float_nan_hex,
             Lexer::linecomment,
+            Lexer::blockcomment,
             Lexer::atom,
         ]);
 
-        //println!("res: {:?}, {:?}", &res, self.input.chars().take(10).collect::<String>());
+        //println!("res: {:?}, {:?}", &res, self.input.chars().take(25).collect::<String>());
 
         return res.map(Some);
     }
