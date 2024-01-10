@@ -313,7 +313,6 @@ impl<'s> Lexer<'s> {
     fn int(&mut self) -> LexResult<Token> {
         let sign = self.sign()?;
         let num = self.expect_nat()?;
-        println!("num: {:0x?}", num);
         match sign {
             Sign::Positive => Ok(Token::Int(num as isize)),
             Sign::Negative => Ok(Token::Int((num as isize).overflowing_neg().0)),
@@ -411,26 +410,32 @@ impl<'s> Lexer<'s> {
         if self.input.len() == 0 {
             return Ok(None);
         }
-        let res = parse_longest(
-            self,
-            &[
-                Lexer::lparen,
-                Lexer::rparen,
-                Lexer::equal,
-                Lexer::whitespace,
-                Lexer::name,
-                Lexer::string,
-                Lexer::nat,
-                Lexer::int,
-                Lexer::float,
-                Lexer::float_inf,
-                Lexer::float_nan,
-                Lexer::float_nan_hex,
-                Lexer::linecomment,
-                Lexer::blockcomment,
-                Lexer::atom,
-            ],
-        );
+
+        if self.input.starts_with("(;") {
+            return self.blockcomment().map(Some);
+        }
+        let res = match self.peek_next_char().unwrap() {
+            '(' => self.lparen(),
+            ')' => self.rparen(),
+            '=' => self.equal(),
+            '$' => self.name(),
+            ';' => self.linecomment(),
+            '"' => self.string(),
+
+            c if c.is_whitespace() => self.whitespace(),
+            c if c.is_ascii_alphabetic() => self.atom(),
+            _ => parse_longest(
+                self,
+                &[
+                    Lexer::nat,
+                    Lexer::int,
+                    Lexer::float,
+                    Lexer::float_inf,
+                    Lexer::float_nan,
+                    Lexer::float_nan_hex,
+                ],
+            ),
+        };
 
         //println!("res: {:?}, {:?}", &res, self.input.chars().take(25).collect::<String>());
 
