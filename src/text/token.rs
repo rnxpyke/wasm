@@ -1,9 +1,9 @@
 use std::{f64::NAN, str::FromStr};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TextToken(Vec<u8>);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     LeftParen,
     RightParen,
@@ -421,9 +421,7 @@ impl<'s> Lexer<'s> {
             '$' => self.name(),
             ';' => self.linecomment(),
             '"' => self.string(),
-
             c if c.is_whitespace() => self.whitespace(),
-            c if c.is_ascii_alphabetic() => self.atom(),
             _ => parse_longest(
                 self,
                 &[
@@ -433,6 +431,7 @@ impl<'s> Lexer<'s> {
                     Lexer::float_inf,
                     Lexer::float_nan,
                     Lexer::float_nan_hex,
+                    Lexer::atom,
                 ],
             ),
         };
@@ -459,6 +458,7 @@ pub fn tokenize_script_without_ws(input: &str) -> Result<Vec<Token>, TokenizeErr
         let Some(token) = tokenizer.token()? else { return Ok(tokens) };
         match token {
             Token::Comment(_) => continue,
+            Token::Whitespace => continue,
             _ => {}
         };
         tokens.push(token);

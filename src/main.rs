@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::{collections::BTreeMap, path::PathBuf};
 
-use wasm::instance;
+use wasm::{instance, text};
 use wasm::instance::{instantiate, ExternVal, Externals, FFiFunc, Name, Store};
 use wasm::rt::{Machine, Stack, Val};
 use wasm::scripts::run_script;
@@ -68,7 +68,7 @@ fn rocket_externals() -> Externals {
 }
 
 fn rocket_example(path: &Path) {
-    let add_mod = wasm::parser::parse_file(path).unwrap();
+    let add_mod = wasm::binary::parser::parse_file(path).unwrap();
     let mut store = instance::Store {
         funcs: vec![],
         mems: vec![],
@@ -106,6 +106,12 @@ fn main() {
     if ext == "wast" {
         run_wast(&args.wasm);
         return;
+    }
+
+    if ext == "wat" {
+        let input = std::fs::read_to_string(&args.wasm).unwrap();
+        let module = text::parse_module(&input).unwrap();
+        
     }
 
     if args.wasm.ends_with("rocket.wasm") {

@@ -159,6 +159,7 @@ pub struct Module {
     pub exports: Vec<Export>,
 }
 
+
 impl Index<FuncIdx> for Module {
     type Output = Func;
 

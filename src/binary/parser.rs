@@ -599,10 +599,10 @@ pub fn parse_file(path: impl AsRef<std::path::Path>) -> Result<Module, io::Error
 }
 
 #[cfg(test)]
-static EMPTY_MOD: &'static [u8] = include_bytes!("../examples/nothing.wasm");
+static EMPTY_MOD: &'static [u8] = include_bytes!("../../examples/nothing.wasm");
 
 #[cfg(test)]
-static ADD_MOD: &'static [u8] = include_bytes!("../examples/add.wasm");
+static ADD_MOD: &'static [u8] = include_bytes!("../../examples/add.wasm");
 
 #[cfg(test)]
 fn parse_bytes(bytes: &'static [u8]) -> io::Result<Module> {
