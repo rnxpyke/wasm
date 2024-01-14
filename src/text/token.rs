@@ -1,7 +1,13 @@
-use std::{f64::NAN, str::FromStr};
+use std::{f64::NAN, str::FromStr, string::FromUtf8Error};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextToken(Vec<u8>);
+
+impl TextToken {
+    pub fn try_string(&self) -> Result<String, FromUtf8Error> {
+        String::from_utf8(self.0.clone())
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {

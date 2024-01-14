@@ -1,5 +1,5 @@
-pub mod token;
 pub mod parser;
+pub mod token;
 
 pub use token::tokenize_script;
 pub use token::tokenize_script_without_ws;
@@ -12,7 +12,7 @@ use token::TokenizeError;
 #[derive(Debug)]
 pub enum InputError {
     Parsing(ParseError),
-    Tokenizing(TokenizeError)
+    Tokenizing(TokenizeError),
 }
 
 pub fn parse_module(input: &str) -> Result<Module, InputError> {

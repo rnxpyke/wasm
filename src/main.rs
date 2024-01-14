@@ -1,10 +1,10 @@
 use std::path::Path;
 use std::{collections::BTreeMap, path::PathBuf};
 
-use wasm::{instance, text};
 use wasm::instance::{instantiate, ExternVal, Externals, FFiFunc, Name, Store};
 use wasm::rt::{Machine, Stack, Val};
 use wasm::scripts::run_script;
+use wasm::{instance, text};
 
 pub struct Args {
     wasm: PathBuf,
@@ -111,7 +111,6 @@ fn main() {
     if ext == "wat" {
         let input = std::fs::read_to_string(&args.wasm).unwrap();
         let module = text::parse_module(&input).unwrap();
-        
     }
 
     if args.wasm.ends_with("rocket.wasm") {
