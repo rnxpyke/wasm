@@ -1,4 +1,4 @@
-use crate::repr::{FuncType, Import, ImportDesc, Module, ResultType, TypeIdx, ValType};
+use crate::repr::{Expr, Func, FuncType, Import, ImportDesc, Inst, Locals, Module, ResultType, TypeIdx, ValType};
 
 use super::token::{TextToken, Token};
 
@@ -21,6 +21,7 @@ pub enum ParseContext {
     Type,
     Params,
     Result,
+    Func,
 }
 
 #[derive(Clone, Debug)]
@@ -61,11 +62,56 @@ impl<'t> Parser<'t> {
         }
     }
 
+    fn accept_any_decl(&mut self) -> Option<&'t str> {
+        let (prefix, rest) = self.tokens.split_at(2);
+        let [Token::LeftParen, Token::Atom(decl)] = prefix else { return None };
+        self.tokens = rest;
+        Some(decl.as_ref())
+    }
+
+    fn expect_any_decl(&mut self) -> ParseResult<&'t str> {
+        let (prefix, rest) = self.tokens.split_at(2);
+        let [Token::LeftParen, Token::Atom(decl)] = prefix else { return Err(ParseError::FailedExpectedToken) };
+        self.tokens = rest;
+        Ok(decl.as_ref())
+    }
+
+    fn accept_decl(&mut self, expected: &str) -> Option<()> {
+        let (prefix, rest) = self.tokens.split_at(2);
+        let [Token::LeftParen, Token::Atom(decl)] = prefix else { return None };
+        if expected != decl {
+            return None;
+        }
+        self.tokens = rest;
+        Some(())
+    }
+
+    fn expect_decl(&mut self, expected: &str) -> ParseResult<()> {
+        let (prefix, rest) = self.tokens.split_at(2);
+        let [Token::LeftParen, Token::Atom(decl)] = prefix else { return Err(ParseError::FailedExpectedToken) };
+        if decl != expected {
+            return Err(ParseError::FailedExpectedToken);
+        }
+        self.tokens = rest;
+        Ok(())
+    }
+
     fn accept_next_token(&mut self) -> Option<&'t Token> {
         let (t, rest) = self.tokens.split_first()?;
         self.tokens = rest;
         println!("token: {:?}", t);
         Some(t)
+    }
+
+    fn accept_any_atom(&mut self) -> Option<&str> {
+        let (t, rest) = self.tokens.split_first()?;
+        match t {
+            Token::Atom(string) => {
+                self.tokens = rest;
+                Some(&string)
+            }
+            _ => None,
+        }
     }
 
     fn expect_any_atom(&mut self) -> ParseResult<&str> {
@@ -142,6 +188,10 @@ impl<'t> Parser<'t> {
             return Some(ValType::ExternRef);
         }
         None
+    }
+
+    fn expect_valtype(&mut self) -> ParseResult<ValType> {
+        self.accept_valtype().ok_or(ParseError::FailedExpectedToken)
     }
 
     fn expect_lparen(&mut self) -> ParseResult<()> {
@@ -264,20 +314,45 @@ impl<'t> Parser<'t> {
         Ok(typidx)
     }
 
-    fn expect_typeuse(&mut self) -> ParseResult<TypeIdx> {
-        let decl = self.peek_decl()?;
-        match decl {
-            "type" => {
-                self.expect_lparen()?;
-                self.expect_atom("type")?;
-                let typidx = self.expect_typeidx()?;
-                self.expect_rparen()?;
-                Ok(typidx)
-            }
-            "param" => todo!(),
-            "result" => todo!(),
-            _ => return Err(ParseError::FailedExpectedToken),
+    fn expect_params(&mut self) -> ParseResult<Vec<ValType>> {
+        self.expect_lparen()?;
+        self.expect_atom("param")?;
+        let id = self.accept_name();
+        let valtype = self.expect_valtype()?;
+        let mut params = vec![valtype];
+        if id.is_none() {
+            self.expect_rparen()?;
+            return Ok(params);
         }
+        while !self.accept_rparen() {
+            params.push(self.expect_valtype()?);
+        }
+        return Ok(params);
+    }
+
+    fn expect_results(&mut self) -> ParseResult<Vec<ValType>> {
+        self.expect_lparen()?;
+        self.expect_atom("result")?;
+        let mut results = vec![];
+        while !self.accept_rparen() {
+            results.push(self.expect_valtype()?);
+        }
+        Ok(results)
+    }
+
+    fn expect_typeuse(&mut self) -> ParseResult<TypeIdx> {
+        self.expect_decl("type")?;
+        let typidx = self.expect_typeidx()?;
+        self.expect_rparen()?;
+
+        while let Ok("param") = self.peek_decl() {
+            let params = self.expect_params()?;
+        }
+
+        while let Ok("result") = self.peek_decl() {
+            let results = self.expect_results()?;
+        }
+        Ok(typidx)
     }
 
     fn expect_importdesc_func(&mut self, ctx: &mut IdentifierContext) -> ParseResult<ImportDesc> {
@@ -314,6 +389,57 @@ impl<'t> Parser<'t> {
         })
     }
 
+    fn accept_local(&mut self) -> ParseResult<Option<Locals>> {
+        let Ok("local") = self.peek_decl() else { return Ok(None) };
+        self.expect_lparen()?;
+        self.expect_atom("local")?;
+        let id = self.accept_name();
+        assert!(id.is_none());
+        let valtype = self.expect_valtype()?;
+        self.expect_rparen()?;
+        Ok(Some(Locals { n: 1, t: valtype }))
+    }
+
+    fn expect_locals(&mut self) -> ParseResult<Vec<Locals>> {
+        let mut locals = vec![];
+        while let Some(local) = self.accept_local()? {
+            locals.push(local);
+        }
+        Ok(locals)
+    }
+
+    fn accept_instr(&mut self) -> ParseResult<Option<Inst>> {
+        let Some(atom) = self.accept_any_atom() else { return Ok(None) };
+        let inst = match atom {
+            "unreachable" => Inst::Unreachable,
+            "nop" => Inst::Nop,
+            x => todo!("unimplemented instr: {:?}", x),
+        };
+        Ok(Some(inst))
+    }
+    fn expect_expr(&mut self) -> ParseResult<Vec<Inst>> {
+        let mut instrs = vec![];
+        
+        while let Some(inst) = { println!("expecting inst, peeking: {:?}", self.peek_token()); self.accept_instr()? } {
+            instrs.push(inst);
+        }
+        Ok(instrs)
+    }
+
+    fn expect_func(&mut self, ctx: &mut IdentifierContext) -> ParseResult<Func> {
+        self.expect_lparen()?;
+        self.expect_atom("func")?;
+        let id = self.accept_name();
+        // todo handle name
+        let typ = self.expect_typeuse()?;
+        let locals = self.expect_locals()?;
+        let expr = self.expect_expr()?;
+        self.expect_rparen().map_err(|e| {
+            e.context(ParseContext::Func)
+        })?;
+        Ok(Func { typ, locals, body: expr })
+    }
+
     pub(super) fn module(&mut self) -> ParseResult<Module> {
         self.expect_lparen()?;
         self.expect_atom("module")?;
@@ -336,7 +462,10 @@ impl<'t> Parser<'t> {
                     let import = self.expect_import(&mut ctx)?;
                     module.imports.push(import);
                 }
-                "func" => todo!("func"),
+                "func" => {
+                    let func = self.expect_func(&mut ctx)?;
+                    module.funcs.push(func)
+                },
                 "table" => todo!("table"),
                 "mem" => todo!("mem"),
                 "global" => todo!("global"),

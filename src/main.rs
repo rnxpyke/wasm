@@ -110,6 +110,9 @@ fn main() {
 
     if ext == "wat" {
         let input = std::fs::read_to_string(&args.wasm).unwrap();
+        let sexpr = text::sexpr::parse_module_to_sexpr(&input).unwrap();
+        //println!("sexpr: {:#?}", sexpr);
+        //std::process::exit(0);
         let module = text::parse_module(&input).unwrap();
     }
 

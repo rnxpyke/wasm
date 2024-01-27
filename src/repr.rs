@@ -239,7 +239,7 @@ pub enum BlockType {
 
 #[derive(Clone)]
 pub struct Expr {
-    instructions: Vec<Inst>,
+    pub instructions: Vec<Inst>,
 }
 
 impl From<Vec<Inst>> for Expr {

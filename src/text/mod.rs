@@ -1,5 +1,6 @@
 pub mod parser;
 pub mod token;
+pub mod sexpr;
 
 pub use token::tokenize_script;
 pub use token::tokenize_script_without_ws;
